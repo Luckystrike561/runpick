@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 
-VERSION=1.0.0
+VERSION=1.1.0
 
 # Resolved eagerly: fzf runs the preview as a subprocess, which needs a path
 # that does not depend on the caller's working directory.
@@ -254,7 +254,7 @@ main() {
     printf '%s\n' "$listing" |
       fzf --prompt="$prompt" --height=40% --reverse --no-multi \
         --delimiter='\t' --with-nth=2 --accept-nth=1 \
-        --preview="$(printf '%q' "$SELF") --backend $BACKEND --preview {1}" \
+        --preview="bash $(printf '%q' "$SELF") --backend $BACKEND --preview {1}" \
         --preview-window='down,4,wrap'
   ) || return 0
 

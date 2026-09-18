@@ -1,0 +1,22 @@
+{
+  "name": "runpick",
+  "version": "0.0.1",
+  "description": "Adds `devbox run scripts`, an fzf picker over this project's devbox.json or package.json scripts. Reads optional @emoji, @description and @ignore headers from script files. See https://github.com/Luckystrike561/runpick",
+  "packages": [
+    "jq@1.8.1",
+    "fzf@0.74.3"
+  ],
+  "env": {
+    "RUNPICK_BIN": "{{.Virtenv}}/runpick"
+  },
+  "create_files": {
+    "{{.Virtenv}}/runpick": "bin/runpick"
+  },
+  "shell": {
+    "scripts": {
+      "scripts": [
+        "bash \"$RUNPICK_BIN\""
+      ]
+    }
+  }
+}

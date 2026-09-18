@@ -20,12 +20,32 @@ devbox run
 
 ## Install
 
+### As a devbox plugin (devbox projects)
+
+```json
+{
+  "include": ["github:Luckystrike561/runpick/tags/v1.1.0"]
+}
+```
+
+That is the whole setup. The plugin brings its own `jq` and `fzf`, copies the
+script into `.devbox/virtenv/runpick/`, and defines the `scripts` entry itself,
+so `devbox run scripts` works with nothing installed globally and nothing else
+added to `devbox.json`. Drop `tags/v1.1.0` for the tip of `main`.
+
+A script of the same name in your own `devbox.json` takes precedence over the
+plugin's, so you can override it.
+
+### On `PATH` (anywhere else)
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Luckystrike561/runpick/main/bin/runpick \
   -o ~/.local/bin/runpick && chmod +x ~/.local/bin/runpick
 ```
 
-Requires `bash`, `jq` and `fzf`. `awk` and `sed` come from any base system.
+Needed for repos without devbox — a `package.json`-only project, or someone
+else's repo you have just cloned. Requires `bash`, `jq` and `fzf` on `PATH`;
+`awk` and `sed` come from any base system.
 
 ## Use
 
@@ -76,10 +96,18 @@ Only the first token of the command is examined, so `scripts/build.sh --release`
 resolves to a file and `npm ci && tsc` does not. Repos using none of this still
 work; the preview shows the raw command.
 
-## Wiring it into a project
+## Notes on the plugin
 
-Optional, since `runpick` already works from any directory. If you want it as a
-script of its own:
+Two things worth knowing if you fork it:
+
+- `create_files` resolves its sources **relative to `plugin.json`**, not the
+  repo root. That is why `plugin.json` sits at the top level here rather than in
+  a `plugin/` subdirectory, which also means consumers need no `?dir=`.
+- `create_files` copies without the executable bit, so both the plugin's script
+  entry and the fzf preview command invoke the file as `bash <path>`.
+
+Outside devbox, a `scripts` entry is optional — `runpick` works from any
+directory. If you want one anyway:
 
 ```json
 { "shell": { "scripts": { "scripts": ["runpick"] } } }
