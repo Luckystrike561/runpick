@@ -7,13 +7,16 @@ Reads the scripts the project already declares — nothing to configure, nothing
 to keep in sync.
 
 ```
+$ devbox run pick
+
 devbox run
-  🎯 scripts
-  ⌨️ vial
-  🗺️ keyboard-layout
-  👀 keymap
-  📦 keymap-install
-  4/7 ───────────────────────────────────────────────
+  ⌨️ vial:launch
+  🗺️ layout:print
+  👀 keymap:toggle
+  📦 keymap:install
+  ♻️ keymap:update
+  🗑️ keymap:remove
+  6/6 ───────────────────────────────────────────────
   Install and enable the Omarchy plugin for the layer reference
   scripts/keymap/install.sh
 ```
@@ -24,24 +27,30 @@ devbox run
 
 ```json
 {
-  "include": ["github:Luckystrike561/runpick/tags/v1.2.0"]
+  "include": ["github:Luckystrike561/runpick/tags/v1.3.0"]
 }
 ```
 
 That is the whole setup. The plugin brings its own `jq` and `fzf`, copies the
-script into `.devbox/virtenv/runpick/`, and defines a `runpick` script, so
-`devbox run runpick` works with nothing installed globally and nothing else
-added to `devbox.json`. Drop `tags/v1.2.0` for the tip of `main`.
+script into `.devbox/virtenv/runpick/`, and defines the script, so
 
-The script is named after the plugin rather than something generic like
-`scripts`, so it cannot collide with a script a project already has. If you
-want a shorter name, the plugin exports `$RUNPICK_BIN`, so an alias is one
-line — and runpick recognises it as itself, so it never lists the picker among
-the things you can pick:
+```bash
+devbox run pick
+```
+
+works with nothing installed globally and nothing else added to `devbox.json`.
+Drop `tags/v1.3.0` for the tip of `main`.
+
+If a project already has a script called `pick`, its own wins — devbox gives
+the project's `devbox.json` precedence over an included plugin. The plugin
+exports `$RUNPICK_BIN`, so claiming any other name is one line:
 
 ```json
-{ "shell": { "scripts": { "pick": ["bash \"$RUNPICK_BIN\""] } } }
+{ "shell": { "scripts": { "runpick": ["bash \"$RUNPICK_BIN\""] } } }
 ```
+
+runpick recognises that command as itself, so it never lists the picker among
+the things you can pick.
 
 ### On `PATH` (anywhere else)
 
