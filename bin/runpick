@@ -1,0 +1,273 @@
+#!/usr/bin/env bash
+# runpick — pick a project script with fzf and run it.
+#
+# Copyright 2026 Luckystrike561
+# SPDX-License-Identifier: Apache-2.0
+set -euo pipefail
+
+VERSION=1.0.0
+
+# Resolved eagerly: fzf runs the preview as a subprocess, which needs a path
+# that does not depend on the caller's working directory.
+SELF=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")
+
+# Project roots are found by walking up from the working directory, so runpick
+# works from anywhere inside a repo and needs no per-project installation.
+MANIFESTS=(devbox.json package.json)
+
+die() {
+  printf 'runpick: %s\n' "$1" >&2
+  exit 1
+}
+
+usage() {
+  cat <<'EOF'
+runpick — pick a project script with fzf and run it
+
+usage:
+  runpick [--backend devbox|npm] [--print]
+  runpick --list
+  runpick --preview <key>
+  runpick --version | --help
+
+options:
+  --backend NAME  force a backend instead of detecting one
+  --list          print "key<TAB>label" for every candidate and exit
+  --print         print the command for the chosen script instead of running it
+  --preview KEY   print one script's description and command (used by fzf)
+
+conventions:
+  When a script's command is a file in the repo, runpick reads three optional
+  headers from it:
+
+    # @emoji 🎯
+    # @description Shown in the preview pane
+    # @ignore      Hidden from the picker
+
+  Repos that use none of these still work; the preview shows the raw command.
+EOF
+}
+
+# --- project discovery ------------------------------------------------------
+
+find_root() {
+  local dir=$PWD manifest
+  while :; do
+    for manifest in "${MANIFESTS[@]}"; do
+      [[ -f $dir/$manifest ]] && { printf '%s\n' "$dir"; return 0; }
+    done
+    [[ $dir == / ]] && return 1
+    dir=$(dirname "$dir")
+  done
+}
+
+manifest_for() {
+  case $1 in
+    devbox) printf 'devbox.json\n' ;;
+    npm) printf 'package.json\n' ;;
+  esac
+}
+
+detect_backend() {
+  [[ -f $ROOT/devbox.json ]] && { printf 'devbox\n'; return 0; }
+  [[ -f $ROOT/package.json ]] && { printf 'npm\n'; return 0; }
+  return 1
+}
+
+# npm, pnpm, yarn and bun all read the same `scripts` object, so only the
+# runner differs. Pick it from the lockfile rather than asking.
+package_manager() {
+  [[ -f $ROOT/bun.lockb || -f $ROOT/bun.lock ]] && { printf 'bun\n'; return; }
+  [[ -f $ROOT/pnpm-lock.yaml ]] && { printf 'pnpm\n'; return; }
+  [[ -f $ROOT/yarn.lock ]] && { printf 'yarn\n'; return; }
+  printf 'npm\n'
+}
+
+# argv that runs $1, as a global array so no quoting survives a subshell.
+set_run_argv() {
+  case $BACKEND in
+    devbox) RUN_ARGV=(devbox run "$1") ;;
+    npm) RUN_ARGV=("$(package_manager)" run "$1") ;;
+  esac
+}
+
+# --- backends ---------------------------------------------------------------
+
+# devbox.json is JSONC: devbox accepts // and /* */ comments, jq does not.
+# Stripping them needs to respect string contents, or the `https://` in
+# "$schema" becomes a comment and the file stops parsing.
+strip_comments() {
+  awk '
+    BEGIN { ins = 0; blk = 0 }
+    {
+      out = ""
+      n = length($0)
+      for (i = 1; i <= n; i++) {
+        c = substr($0, i, 1)
+        nxt = substr($0, i + 1, 1)
+        if (blk) {
+          if (c == "*" && nxt == "/") { blk = 0; i++ }
+          continue
+        }
+        if (ins) {
+          out = out c
+          if (c == "\\") { out = out nxt; i++; continue }
+          if (c == "\"") ins = 0
+          continue
+        }
+        if (c == "\"") { ins = 1; out = out c; continue }
+        if (c == "/" && nxt == "/") break
+        if (c == "/" && nxt == "*") { blk = 1; i++; continue }
+        out = out c
+      }
+      print out
+    }
+  ' "$1"
+}
+
+# Normalised copy of the active manifest, so every jq call below reads plain
+# JSON regardless of what the project wrote.
+load_manifest() {
+  local src=$ROOT/$(manifest_for "$BACKEND")
+  MANIFEST=$(mktemp "${TMPDIR:-/tmp}/runpick.XXXXXX")
+  trap 'rm -f "$MANIFEST"' EXIT
+  strip_comments "$src" >"$MANIFEST"
+  jq -e . "$MANIFEST" >/dev/null 2>&1 ||
+    die "$src is not valid JSON, even with comments stripped"
+}
+
+keys() {
+  case $BACKEND in
+    devbox) jq -r '.shell.scripts // {} | keys_unsorted[]' "$MANIFEST" ;;
+    npm) jq -r '.scripts // {} | keys_unsorted[]' "$MANIFEST" ;;
+  esac
+}
+
+# A devbox script may be a string or an array of lines; npm is always a string.
+command_for() {
+  case $BACKEND in
+    devbox)
+      jq -r --arg k "$1" \
+        '.shell.scripts[$k] | if type == "array" then join("\n") else . end' \
+        "$MANIFEST"
+      ;;
+    npm) jq -r --arg k "$1" '.scripts[$k]' "$MANIFEST" ;;
+  esac
+}
+
+# --- script metadata --------------------------------------------------------
+
+# Only the first token is considered: `scripts/build.sh --release` points at a
+# file, `npm ci && tsc` does not.
+script_file() {
+  local first=${1%% *}
+  [[ -n $first && -f $ROOT/$first ]] && printf '%s\n' "$ROOT/$first"
+}
+
+meta() {
+  sed -n "s/^# @$2 //p" "$1" | head -1
+}
+
+preview() {
+  local cmd file
+  cmd=$(command_for "$1") || return 0
+  file=$(script_file "$cmd") || true
+  [[ -n ${file:-} ]] && meta "$file" description
+  printf '%s\n' "$cmd"
+}
+
+candidates() {
+  local key cmd file emoji me
+  me=$(basename "$SELF")
+  keys | while read -r key; do
+    cmd=$(command_for "$key")
+    # Never offer to launch the picker from inside the picker.
+    [[ $cmd == *"$me"* ]] && continue
+    file=$(script_file "$cmd") || true
+    # @ignore marks an action too destructive to sit one keystroke away.
+    if [[ -n ${file:-} ]] && grep -q '^# @ignore' "$file"; then
+      continue
+    fi
+    emoji=""
+    [[ -n ${file:-} ]] && emoji=$(meta "$file" emoji)
+    # Field 1 is the value fzf returns, field 2 is the label it shows. Keeping
+    # them apart lets the label carry an emoji without polluting the value.
+    printf '%s\t%s\n' "$key" "${emoji:+$emoji }$key"
+  done
+}
+
+# --- main -------------------------------------------------------------------
+
+main() {
+  local mode=run forced="" key="" prompt choice
+
+  while (($#)); do
+    case $1 in
+      --help | -h) usage; return 0 ;;
+      --version | -V) printf 'runpick %s\n' "$VERSION"; return 0 ;;
+      --list) mode=list ;;
+      --print) mode=print ;;
+      --preview) mode=preview; key=${2-}; shift ;;
+      --backend) forced=${2-}; shift ;;
+      *) die "unknown argument: $1" ;;
+    esac
+    shift
+  done
+
+  command -v jq >/dev/null || die "jq is required (https://jqlang.github.io/jq/)"
+
+  ROOT=$(find_root) || die "no devbox.json or package.json in $PWD or any parent"
+
+  if [[ -n $forced ]]; then
+    case $forced in
+      devbox | npm) BACKEND=$forced ;;
+      *) die "unknown backend: $forced (expected devbox or npm)" ;;
+    esac
+    [[ -f $ROOT/$(manifest_for "$BACKEND") ]] ||
+      die "backend $forced requested but $(manifest_for "$BACKEND") is missing in $ROOT"
+  else
+    BACKEND=$(detect_backend) || die "no supported manifest in $ROOT"
+  fi
+
+  load_manifest
+
+  case $mode in
+    preview)
+      [[ -n $key ]] || die "--preview needs a script name"
+      preview "$key"
+      return 0
+      ;;
+    list) candidates; return 0 ;;
+  esac
+
+  set_run_argv ""
+  prompt="${RUN_ARGV[0]} ${RUN_ARGV[1]} "
+
+  local listing
+  listing=$(candidates)
+  [[ -n $listing ]] ||
+    die "no runnable scripts in $ROOT/$(manifest_for "$BACKEND")"
+
+  command -v fzf >/dev/null || die "fzf is required for the picker; run '${prompt}<script>' directly"
+
+  choice=$(
+    printf '%s\n' "$listing" |
+      fzf --prompt="$prompt" --height=40% --reverse --no-multi \
+        --delimiter='\t' --with-nth=2 --accept-nth=1 \
+        --preview="$(printf '%q' "$SELF") --backend $BACKEND --preview {1}" \
+        --preview-window='down,4,wrap'
+  ) || return 0
+
+  [[ -n $choice ]] || return 0
+
+  set_run_argv "$choice"
+  if [[ $mode == print ]]; then
+    printf '%s\n' "${RUN_ARGV[*]}"
+    return 0
+  fi
+
+  cd "$ROOT"
+  exec "${RUN_ARGV[@]}"
+}
+
+main "$@"
