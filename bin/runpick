@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 
-VERSION=1.1.0
+VERSION=1.2.0
 
 # Resolved eagerly: fzf runs the preview as a subprocess, which needs a path
 # that does not depend on the caller's working directory.
@@ -181,8 +181,11 @@ candidates() {
   me=$(basename "$SELF")
   keys | while read -r key; do
     cmd=$(command_for "$key")
-    # Never offer to launch the picker from inside the picker.
-    [[ $cmd == *"$me"* ]] && continue
+    # Never offer to launch the picker from inside the picker. Matched
+    # case-insensitively so an alias written as `bash "$RUNPICK_BIN"` counts.
+    case $(printf '%s' "$cmd" | tr '[:upper:]' '[:lower:]') in
+      *"$me"*) continue ;;
+    esac
     file=$(script_file "$cmd") || true
     # @ignore marks an action too destructive to sit one keystroke away.
     if [[ -n ${file:-} ]] && grep -q '^# @ignore' "$file"; then

@@ -34,7 +34,8 @@ cat >"$work/dbx/devbox.json" <<'EOF'
       "danger": ["scripts/danger.sh"],
       "inline": ["echo hi && echo there"],
       "docs": ["echo https://example.com/a//b and done"],
-      "pick": ["runpick"]
+      "pick": ["runpick"],
+      "alias": ["bash \"$RUNPICK_BIN\""]
     }
   }
 }
@@ -52,7 +53,7 @@ chmod +x "$work/dbx/scripts"/*.sh
 
 cd "$work/dbx"
 
-check "devbox: lists described, inline; hides @ignore and self" \
+check "devbox: hides @ignore, and the picker under either spelling" \
   "build	🔨 build
 inline	inline
 docs	docs" \

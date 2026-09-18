@@ -24,17 +24,24 @@ devbox run
 
 ```json
 {
-  "include": ["github:Luckystrike561/runpick/tags/v1.1.0"]
+  "include": ["github:Luckystrike561/runpick/tags/v1.2.0"]
 }
 ```
 
 That is the whole setup. The plugin brings its own `jq` and `fzf`, copies the
-script into `.devbox/virtenv/runpick/`, and defines the `scripts` entry itself,
-so `devbox run scripts` works with nothing installed globally and nothing else
-added to `devbox.json`. Drop `tags/v1.1.0` for the tip of `main`.
+script into `.devbox/virtenv/runpick/`, and defines a `runpick` script, so
+`devbox run runpick` works with nothing installed globally and nothing else
+added to `devbox.json`. Drop `tags/v1.2.0` for the tip of `main`.
 
-A script of the same name in your own `devbox.json` takes precedence over the
-plugin's, so you can override it.
+The script is named after the plugin rather than something generic like
+`scripts`, so it cannot collide with a script a project already has. If you
+want a shorter name, the plugin exports `$RUNPICK_BIN`, so an alias is one
+line — and runpick recognises it as itself, so it never lists the picker among
+the things you can pick:
+
+```json
+{ "shell": { "scripts": { "pick": ["bash \"$RUNPICK_BIN\""] } } }
+```
 
 ### On `PATH` (anywhere else)
 
@@ -98,23 +105,17 @@ work; the preview shows the raw command.
 
 ## Notes on the plugin
 
-Two things worth knowing if you fork it:
+Three things worth knowing if you fork it:
 
 - `create_files` resolves its sources **relative to `plugin.json`**, not the
   repo root. That is why `plugin.json` sits at the top level here rather than in
   a `plugin/` subdirectory, which also means consumers need no `?dir=`.
 - `create_files` copies without the executable bit, so both the plugin's script
   entry and the fzf preview command invoke the file as `bash <path>`.
-
-Outside devbox, a `scripts` entry is optional — `runpick` works from any
-directory. If you want one anyway:
-
-```json
-{ "shell": { "scripts": { "scripts": ["runpick"] } } }
-```
-
-runpick skips any entry whose command invokes runpick, so it never offers to
-launch itself.
+- runpick reads the project's own `devbox.json`, not devbox's merged view, since
+  that is where the commands and their script files are. Scripts injected by a
+  plugin are therefore not listed — including runpick's own entry, which is
+  what you want.
 
 ## Prior art
 
