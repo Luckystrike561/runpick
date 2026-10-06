@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 
-VERSION=2.0.0
+VERSION=3.0.0
 
 # Resolved eagerly: fzf runs the preview as a subprocess, which needs a path
 # that does not depend on the caller's working directory.
@@ -27,16 +27,9 @@ usage (inside `devbox run` or `devbox shell`):
   runpick --version | --help
 
 options:
-  --list          print "key<TAB>label" for every candidate and exit
+  --list          print every candidate script name and exit
   --print         print the command for the chosen script instead of running it
-  --preview KEY   print one script's description and command (used by fzf)
-
-When a script's command starts with a file in the repo, runpick reads optional
-headers from it:
-
-  # @emoji 🎯
-  # @description Shown in the preview pane
-  # @ignore      Hidden from the picker
+  --preview KEY   print one script's command (used by fzf)
 EOF
 }
 
@@ -83,45 +76,18 @@ load_scripts() {
   ' 2>/dev/null) || die "$src is not valid JSON, even with comments stripped"
 }
 
-# Only the first token is considered: `scripts/build.sh --release` points at a
-# file, `echo hi && make` does not.
-script_file() {
-  local first=${1%%[[:space:]]*}
-  [[ -n $first && -f $ROOT/$first ]] && printf '%s\n' "$ROOT/$first"
-}
-
-meta() {
-  sed -n "s/^# @$2 //p" "$1" | head -1
-}
-
 preview() {
-  local cmd file
-  cmd=$(jq -r --arg k "$1" '.[$k] // empty' <<<"$SCRIPTS")
-  file=$(script_file "$cmd") || true
-  [[ -n $file ]] && meta "$file" description
-  printf '%s\n' "$cmd"
+  jq -r --arg k "$1" '.[$k] // empty' <<<"$SCRIPTS"
 }
 
+# The picker never lists itself. Matched case-insensitively so an alias
+# written as `bash "$RUNPICK_BIN"` counts.
 candidates() {
-  local key first_line file emoji
-  # The picker never lists itself. Matched case-insensitively so an alias
-  # written as `bash "$RUNPICK_BIN"` counts.
-  while IFS=$'\t' read -r key first_line; do
-    file=$(script_file "$first_line") || true
-    emoji=""
-    if [[ -n $file ]]; then
-      # @ignore marks an action too destructive to sit one keystroke away.
-      grep -q '^# @ignore' "$file" && continue
-      emoji=$(meta "$file" emoji)
-    fi
-    # Field 1 is the value fzf returns, field 2 is the label it shows.
-    printf '%s\t%s\n' "$key" "${emoji:+$emoji }$key"
-  done < <(jq -r --arg me "$(basename "$SELF")" '
+  jq -r --arg me "$(basename "$SELF")" '
     to_entries[]
     | select(.value | ascii_downcase | contains($me) | not)
-    | [.key, (.value | split("\n")[0])]
-    | @tsv
-  ' <<<"$SCRIPTS")
+    | .key
+  ' <<<"$SCRIPTS"
 }
 
 main() {
@@ -161,8 +127,7 @@ main() {
 
   choice=$(
     fzf --prompt="devbox run " --height=40% --reverse --no-multi \
-      --delimiter='\t' --with-nth=2 --accept-nth=1 \
-      --preview="bash $(printf '%q' "$SELF") --preview {1}" \
+      --preview="bash $(printf '%q' "$SELF") --preview {}" \
       --preview-window='down,4,wrap' <<<"$listing"
   ) || return 0
   [[ -n $choice ]] || return 0

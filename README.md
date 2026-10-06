@@ -4,21 +4,21 @@ Pick a [devbox](https://www.jetify.com/devbox) script with
 [fzf](https://github.com/junegunn/fzf) and run it.
 
 One keystroke instead of remembering what a repo called its build command.
-Reads the scripts `devbox.json` already declares — nothing to configure,
-nothing to keep in sync.
+Reads the scripts `devbox.json` already declares, so there is nothing to
+configure and nothing to keep in sync. The preview pane shows each script's
+command.
 
 ```
 $ devbox run pick
 
 devbox run
-  ⌨️ vial:launch
-  🗺️ layout:print
-  👀 keymap:toggle
-  📦 keymap:install
-  ♻️ keymap:update
-  🗑️ keymap:remove
+  vial:launch
+  layout:print
+  keymap:toggle
+  keymap:install
+  keymap:update
+  keymap:remove
   6/6 ───────────────────────────────────────────────
-  Install and enable the Omarchy plugin for the layer reference
   scripts/keymap/install.sh
 ```
 
@@ -26,7 +26,7 @@ devbox run
 
 ```json
 {
-  "include": ["github:Luckystrike561/runpick/tags/v2.0.0"]
+  "include": ["github:Luckystrike561/runpick/tags/v3.0.0"]
 }
 ```
 
@@ -38,7 +38,7 @@ devbox run pick
 ```
 
 works with nothing installed globally and nothing else added to `devbox.json`.
-Drop `tags/v2.0.0` for the tip of `main`, but a pinned tag is safer: an
+Drop `tags/v3.0.0` for the tip of `main`, but a pinned tag is safer: an
 included plugin runs in your shell.
 
 If a project already has a script called `pick`, its own wins — devbox gives
@@ -73,27 +73,6 @@ comments. Comments are stripped with string contents respected, so the
 `https://` in `$schema` survives. Trailing commas, which devbox also accepts,
 are not supported yet.
 
-## Descriptions
-
-Optional. When a script's command is a file in the repo, runpick reads three
-headers from it:
-
-```bash
-#!/usr/bin/env bash
-# @emoji 📦
-# @description Install and enable the plugin
-```
-
-- `@emoji` — prefixes the entry in the list
-- `@description` — first line of the preview pane
-- `@ignore` — hides the entry, for anything too destructive to sit one
-  keystroke away, such as a command that needs `sudo`. It only hides it:
-  `devbox run <name>` still works.
-
-Only the first token of the command is examined, so `scripts/build.sh --release`
-resolves to a file and `echo hi && make` does not. Repos using none of this
-still work; the preview shows the raw command.
-
 ## Notes on the plugin
 
 Three things worth knowing if you fork it:
@@ -103,10 +82,9 @@ Three things worth knowing if you fork it:
   a `plugin/` subdirectory, which also means consumers need no `?dir=`.
 - `create_files` copies without the executable bit, so both the plugin's script
   entry and the fzf preview command invoke the file as `bash <path>`.
-- runpick reads the project's own `devbox.json`, not devbox's merged view, since
-  that is where the commands and their script files are. Scripts injected by a
-  plugin are therefore not listed — including runpick's own entry, which is
-  what you want.
+- runpick reads the project's own `devbox.json`, not devbox's merged view.
+  Scripts injected by a plugin are therefore not listed, including runpick's
+  own entry, which is what you want.
 
 ## Development
 
@@ -119,8 +97,8 @@ skipped without it.
 
 ## Prior art
 
-The fzf-and-`@description` pattern started as a devbox-only picker in a personal
-dotfiles repo. This is that idea, packaged as a plugin and given a licence.
+The fzf picker over devbox scripts started in a personal dotfiles repo. This is
+that idea, packaged as a plugin and given a licence.
 
 ## Licence
 

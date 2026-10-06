@@ -21,21 +21,19 @@ check() { # name expected actual
   fi
 }
 
-# --- fixture: devbox with JSONC comments, a described script and an @ignore ---
+# --- fixture: devbox.json with JSONC comments, string and array scripts ------
 
-mkdir -p "$work/dbx/scripts/deep/nested"
+mkdir -p "$work/dbx/deep/nested"
 cat >"$work/dbx/devbox.json" <<'EOF'
 {
   "$schema": "https://example.com/devbox.schema.json",
   "shell": {
     // A comment devbox accepts and jq does not.
     "scripts": {
-      "build": ["scripts/build.sh"],
+      "build": ["make build"],
       /* block comment */
-      "danger": ["scripts/danger.sh"],
-      "inline": ["echo hi && echo there"],
-      "multi": ["scripts/multi.sh --flag", "echo after"],
-      "release": "scripts/build.sh --release",
+      "inline": "echo hi && echo there",
+      "multi": ["make one", "echo after"],
       "deploy prod": ["echo deploying"],
       "docs": ["echo https://example.com/a//b and done"],
       "pick": ["runpick"],
@@ -44,49 +42,24 @@ cat >"$work/dbx/devbox.json" <<'EOF'
   }
 }
 EOF
-cat >"$work/dbx/scripts/build.sh" <<'EOF'
-#!/usr/bin/env bash
-# @emoji 🔨
-# @description Build the thing
-EOF
-cat >"$work/dbx/scripts/danger.sh" <<'EOF'
-#!/usr/bin/env bash
-# @ignore needs sudo
-EOF
-cat >"$work/dbx/scripts/multi.sh" <<'EOF'
-#!/usr/bin/env bash
-# @emoji 🧩
-# @description Two steps
-EOF
-chmod +x "$work/dbx/scripts"/*.sh
-
 export DEVBOX_PROJECT_ROOT=$work/dbx
 cd "$DEVBOX_PROJECT_ROOT"
 
-listing="build	🔨 build
-inline	inline
-multi	🧩 multi
-release	🔨 release
-deploy prod	deploy prod
-docs	docs"
+listing="build
+inline
+multi
+deploy prod
+docs"
 
-check "devbox: hides @ignore, and the picker under either spelling" \
+check "devbox: lists scripts in file order, hiding the picker under either spelling" \
   "$listing" "$("$runpick" --list)"
 
-check "devbox: preview shows description then command" \
-  "Build the thing
-scripts/build.sh" \
-  "$("$runpick" --preview build)"
-
-check "devbox: preview of an inline command has no description" \
+check "devbox: preview shows a string script's command" \
   "echo hi && echo there" \
   "$("$runpick" --preview inline)"
 
-# Array scripts are joined with newlines, so the first token must stop at the
-# line break, not run on into the next line.
-check "devbox: multi-line script still resolves its file" \
-  "Two steps
-scripts/multi.sh --flag
+check "devbox: preview joins an array script one line per entry" \
+  "make one
 echo after" \
   "$("$runpick" --preview multi)"
 
@@ -96,7 +69,7 @@ check "devbox: // inside a string is not treated as a comment" \
   "echo https://example.com/a//b and done" \
   "$("$runpick" --preview docs)"
 
-cd "$work/dbx/scripts/deep/nested"
+cd "$work/dbx/deep/nested"
 check "root comes from DEVBOX_PROJECT_ROOT, not the working directory" \
   "$listing" "$("$runpick" --list)"
 
@@ -112,7 +85,7 @@ EOF
   pick() { FZF_DEFAULT_OPTS="--filter=$(printf %q "$1")" PATH="$work/bin:$PATH" "$runpick" "${@:2}" </dev/null; }
 
   check "run: execs devbox run <key> from the project root" \
-    "cwd=$work/dbx argv=run release" "$(pick release)"
+    "cwd=$work/dbx argv=run build" "$(pick build)"
 
   check "print: shell-quotes a key with a space" \
     'devbox run deploy\ prod' "$(pick 'deploy prod' --print)"
