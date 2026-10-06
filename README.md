@@ -3,102 +3,68 @@
 Pick a [devbox](https://www.jetify.com/devbox) script with
 [fzf](https://github.com/junegunn/fzf) and run it.
 
-One keystroke instead of remembering what a repo called its build command.
-Reads the scripts `devbox.json` already declares, so there is nothing to
-configure and nothing to keep in sync. The preview pane shows each script's
-command.
+![runpick demo](demo/demo.gif)
 
-```
-$ devbox run pick
+## Example
 
-devbox run
-  vial:launch
-  layout:print
-  keymap:toggle
-  keymap:install
-  keymap:update
-  keymap:remove
-  6/6 ───────────────────────────────────────────────
-  scripts/keymap/install.sh
-```
-
-## Install
+A complete `devbox.json`. The `include` line is the only thing runpick needs:
 
 ```json
 {
-  "include": ["github:Luckystrike561/runpick/tags/v3.0.0"]
+  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/main/.schema/devbox.schema.json",
+  "include": ["github:Luckystrike561/runpick/tags/v3.0.0"],
+  "shell": {
+    "scripts": {
+      "build": "echo 'compiling...' && sleep 1 && echo 'built dist/app'",
+      "test": ["echo 'running 42 tests'", "sleep 1", "echo 'all green'"],
+      "lint": "echo 'no issues found'",
+      "db:migrate": "echo 'applied 3 migrations'",
+      "db:seed": "echo 'seeded 100 rows'",
+      "release": ["echo 'tagging v1.2.0'", "echo 'pushed'"]
+    }
+  }
 }
 ```
 
-That is the whole setup. The plugin brings its own `jq` and `fzf`, copies the
-script into `.devbox/virtenv/runpick/`, and defines the script, so
+Then, from anywhere in the project:
 
 ```bash
 devbox run pick
 ```
 
-works with nothing installed globally and nothing else added to `devbox.json`.
-Drop `tags/v3.0.0` for the tip of `main`, but a pinned tag is safer: an
-included plugin runs in your shell.
+Type to filter, `Enter` to run, `Esc` to cancel. The preview pane shows the
+selected script's command. The plugin brings its own `jq` and `fzf`.
 
-If a project already has a script called `pick`, its own wins — devbox gives
-the project's `devbox.json` precedence over an included plugin. The plugin
-exports `$RUNPICK_BIN`, so claiming any other name is one line:
+## Options
+
+Inside `devbox shell`, the plugin exports `$RUNPICK_BIN`:
+
+```bash
+bash "$RUNPICK_BIN" --print   # pick, then print the command instead of running it
+bash "$RUNPICK_BIN" --list    # list script names, one per line
+```
+
+If your project already has a script named `pick`, yours wins. Give the
+picker another name with:
 
 ```json
-{ "shell": { "scripts": { "runpick": ["bash \"$RUNPICK_BIN\""] } } }
+"runpick": ["bash \"$RUNPICK_BIN\""]
 ```
 
-runpick recognises that command as itself, so it never lists the picker among
-the things you can pick.
+## Limitations
 
-## Use
-
-```bash
-devbox run pick                  # pick and run
-```
-
-Inside `devbox shell`:
-
-```bash
-bash "$RUNPICK_BIN" --print      # pick and print the command
-bash "$RUNPICK_BIN" --list       # every candidate, for scripting
-```
-
-Works from any subdirectory: devbox resolves the project and exports
-`DEVBOX_PROJECT_ROOT`, which runpick reads. Outside devbox it refuses to run.
-
-`devbox.json` is parsed as JSONC, because devbox accepts `//` and `/* */`
-comments. Comments are stripped with string contents respected, so the
-`https://` in `$schema` survives. Trailing commas, which devbox also accepts,
-are not supported yet.
-
-## Notes on the plugin
-
-Three things worth knowing if you fork it:
-
-- `create_files` resolves its sources **relative to `plugin.json`**, not the
-  repo root. That is why `plugin.json` sits at the top level here rather than in
-  a `plugin/` subdirectory, which also means consumers need no `?dir=`.
-- `create_files` copies without the executable bit, so both the plugin's script
-  entry and the fzf preview command invoke the file as `bash <path>`.
-- runpick reads the project's own `devbox.json`, not devbox's merged view.
-  Scripts injected by a plugin are therefore not listed, including runpick's
-  own entry, which is what you want.
+- Only scripts in the project's own `devbox.json` are listed, not scripts
+  added by other plugins.
+- `//` and `/* */` comments are supported. Trailing commas are not yet.
+- Pin a tag in `include`. An included plugin runs in your shell, so tracking
+  `main` means running whatever lands there.
 
 ## Development
 
 ```bash
-bash test/smoke.sh
+devbox run test   # smoke tests
+devbox run demo   # re-record demo/demo.gif with vhs
 ```
-
-Needs `bash`, `jq` and `awk`. The run-mode checks also need `fzf` and are
-skipped without it.
-
-## Prior art
-
-The fzf picker over devbox scripts started in a personal dotfiles repo. This is
-that idea, packaged as a plugin and given a licence.
 
 ## Licence
 

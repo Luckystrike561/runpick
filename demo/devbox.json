@@ -1,0 +1,14 @@
+{
+  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/main/.schema/devbox.schema.json",
+  "include": ["github:Luckystrike561/runpick/tags/v3.0.0"],
+  "shell": {
+    "scripts": {
+      "build": "echo 'compiling...' && sleep 1 && echo 'built dist/app'",
+      "test": ["echo 'running 42 tests'", "sleep 1", "echo 'all green'"],
+      "lint": "echo 'no issues found'",
+      "db:migrate": "echo 'applied 3 migrations'",
+      "db:seed": "echo 'seeded 100 rows'",
+      "release": ["echo 'tagging v1.2.0'", "echo 'pushed'"]
+    }
+  }
+}
