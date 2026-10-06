@@ -1,10 +1,11 @@
 # runpick
 
-Pick a project script with [fzf](https://github.com/junegunn/fzf) and run it.
+Pick a [devbox](https://www.jetify.com/devbox) script with
+[fzf](https://github.com/junegunn/fzf) and run it.
 
 One keystroke instead of remembering what a repo called its build command.
-Reads the scripts the project already declares — nothing to configure, nothing
-to keep in sync.
+Reads the scripts `devbox.json` already declares — nothing to configure,
+nothing to keep in sync.
 
 ```
 $ devbox run pick
@@ -23,11 +24,9 @@ devbox run
 
 ## Install
 
-### As a devbox plugin (devbox projects)
-
 ```json
 {
-  "include": ["github:Luckystrike561/runpick/tags/v1.3.0"]
+  "include": ["github:Luckystrike561/runpick/tags/v2.0.0"]
 }
 ```
 
@@ -39,7 +38,8 @@ devbox run pick
 ```
 
 works with nothing installed globally and nothing else added to `devbox.json`.
-Drop `tags/v1.3.0` for the tip of `main`.
+Drop `tags/v2.0.0` for the tip of `main`, but a pinned tag is safer: an
+included plugin runs in your shell.
 
 If a project already has a script called `pick`, its own wins — devbox gives
 the project's `devbox.json` precedence over an included plugin. The plugin
@@ -52,45 +52,26 @@ exports `$RUNPICK_BIN`, so claiming any other name is one line:
 runpick recognises that command as itself, so it never lists the picker among
 the things you can pick.
 
-### On `PATH` (anywhere else)
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Luckystrike561/runpick/main/bin/runpick \
-  -o ~/.local/bin/runpick && chmod +x ~/.local/bin/runpick
-```
-
-Needed for repos without devbox — a `package.json`-only project, or someone
-else's repo you have just cloned. Requires `bash`, `jq` and `fzf` on `PATH`;
-`awk` and `sed` come from any base system.
-
 ## Use
 
 ```bash
-runpick                    # pick and run
-runpick --print            # pick and print the command instead
-runpick --backend npm      # force a backend
-runpick --list             # every candidate, for scripting
-runpick --preview <key>    # one script's description and command
+devbox run pick                  # pick and run
 ```
 
-Run it anywhere inside a repo: the project root is found by walking up from the
-working directory.
+Inside `devbox shell`:
 
-## Backends
+```bash
+bash "$RUNPICK_BIN" --print      # pick and print the command
+bash "$RUNPICK_BIN" --list       # every candidate, for scripting
+```
 
-Detected in this order, first match wins:
-
-| Manifest | Reads | Runs |
-|---|---|---|
-| `devbox.json` | `.shell.scripts` | `devbox run <key>` |
-| `package.json` | `.scripts` | `<pm> run <key>` |
-
-The package manager comes from the lockfile: `bun.lockb`/`bun.lock` → `bun`,
-`pnpm-lock.yaml` → `pnpm`, `yarn.lock` → `yarn`, otherwise `npm`.
+Works from any subdirectory: devbox resolves the project and exports
+`DEVBOX_PROJECT_ROOT`, which runpick reads. Outside devbox it refuses to run.
 
 `devbox.json` is parsed as JSONC, because devbox accepts `//` and `/* */`
 comments. Comments are stripped with string contents respected, so the
-`https://` in `$schema` survives.
+`https://` in `$schema` survives. Trailing commas, which devbox also accepts,
+are not supported yet.
 
 ## Descriptions
 
@@ -106,11 +87,12 @@ headers from it:
 - `@emoji` — prefixes the entry in the list
 - `@description` — first line of the preview pane
 - `@ignore` — hides the entry, for anything too destructive to sit one
-  keystroke away, such as a command that needs `sudo`
+  keystroke away, such as a command that needs `sudo`. It only hides it:
+  `devbox run <name>` still works.
 
 Only the first token of the command is examined, so `scripts/build.sh --release`
-resolves to a file and `npm ci && tsc` does not. Repos using none of this still
-work; the preview shows the raw command.
+resolves to a file and `echo hi && make` does not. Repos using none of this
+still work; the preview shows the raw command.
 
 ## Notes on the plugin
 
@@ -126,10 +108,19 @@ Three things worth knowing if you fork it:
   plugin are therefore not listed — including runpick's own entry, which is
   what you want.
 
+## Development
+
+```bash
+bash test/smoke.sh
+```
+
+Needs `bash`, `jq` and `awk`. The run-mode checks also need `fzf` and are
+skipped without it.
+
 ## Prior art
 
 The fzf-and-`@description` pattern started as a devbox-only picker in a personal
-dotfiles repo. This is that idea, generalised and given a licence.
+dotfiles repo. This is that idea, packaged as a plugin and given a licence.
 
 ## Licence
 
