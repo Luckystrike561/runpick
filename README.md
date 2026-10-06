@@ -1,4 +1,6 @@
-# runpick
+<p align="center">
+  <img src="assets/logo.png" alt="runpick" width="600">
+</p>
 
 Pick a [devbox](https://www.jetify.com/devbox) script with
 [fzf](https://github.com/junegunn/fzf) and run it.
