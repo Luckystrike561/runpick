@@ -14,7 +14,7 @@ A complete `devbox.json`. The `include` line is the only thing runpick needs:
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/main/.schema/devbox.schema.json",
-  "include": ["github:Luckystrike561/runpick/tags/v1.0.0"],
+  "include": ["github:Luckystrike561/runpick/tags/1.0.0"],
   "shell": {
     "scripts": {
       "build": "echo 'compiling...' && sleep 1 && echo 'built dist/app'",
