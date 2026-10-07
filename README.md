@@ -84,9 +84,10 @@ devbox run cli -- --list --format 'long names'
 ```
 
 That runs `cargo run -- --list --format 'long names'`, so the binary sees
-`--list --format long names` (three words). The line is split like a shell
-command (quotes and backslashes group words) but nothing is expanded: a typed
-`$HOME`, `$(...)` or `*` reaches the script as written.
+`--list --format long names` (three words). The line is split by `xargs`:
+quotes and backslashes group words, but inside double quotes a backslash is
+kept as typed (`"C:\\dir"` stays `C:\\dir`, `"a \"b\""` is rejected), and
+nothing is expanded: a typed `$HOME`, `$(...)` or `*` reaches the script as written.
 
 devbox swallows one `--` after the script name, so runpick adds its own and any
 `--` you type is passed on intact. devbox hands the arguments to a script as

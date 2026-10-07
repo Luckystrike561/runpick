@@ -43,10 +43,11 @@ set_run_argv() {
   RUN_ARGV+=(-- "${FORWARDED[@]}")
 }
 
-# Reads one line from stdin into FORWARDED. Quotes and backslashes group words
-# as in a shell, but xargs only parses the line, so no `$VAR`, `$(...)` or
-# glob is expanded. bash re-quotes the words, since printf(1) has no %q on
-# macOS. Fails when the user cancels with Ctrl-D.
+# Reads one line from stdin into FORWARDED. Quotes and backslashes group words,
+# but xargs only parses the line, so no `$VAR`, `$(...)` or glob is expanded,
+# and unlike a shell it keeps a backslash inside double quotes as typed.
+# bash re-quotes the words, since printf(1) has no %q on macOS. Fails when the
+# user cancels with Ctrl-D.
 read_forwarded() {
   local line quoted prompt
   printf -v prompt '%q ' "${RUN_ARGV[@]}"
