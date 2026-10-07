@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 
-VERSION=1.3.0
+VERSION=1.4.0
 
 # Resolved eagerly: fzf runs the preview as a subprocess, which needs a path
 # that does not depend on the caller's working directory.
@@ -25,7 +25,7 @@ usage() {
 runpick — pick a project script with fzf and run it
 
 usage:
-  runpick [--backend devbox|npm] [--print]
+  runpick [--backend devbox|npm] [--print] [-- ARGS...]
   runpick --list
   runpick --preview <key>
   runpick --version | --help
@@ -35,6 +35,8 @@ options:
   --list          print "key<TAB>label" for every candidate and exit
   --print         print the command for the chosen script instead of running it
   --preview KEY   print one script's description and command (used by fzf)
+  -- ARGS...      pass ARGS verbatim to the chosen script, even ones that
+                  look like runpick options
 
 conventions:
   When a script's command is a file in the repo, runpick reads three optional
@@ -83,12 +85,23 @@ package_manager() {
   printf 'npm\n'
 }
 
-# argv that runs $1, as a global array so no quoting survives a subshell.
+# argv that runs $1 with the forwarded arguments, as a global array so no
+# quoting survives a subshell.
 set_run_argv() {
   case $BACKEND in
     devbox) RUN_ARGV=(devbox run "$1") ;;
     npm) RUN_ARGV=("$(package_manager)" run "$1") ;;
   esac
+  ((${#FORWARDED[@]})) || return 0
+  # npm reads flags after the script name as its own unless `--` precedes
+  # them. devbox does not, but an explicit `--` keeps a forwarded flag from
+  # ever being taken for one of devbox's. pnpm, yarn and bun already forward
+  # everything after the script name, and pnpm and yarn 2+ would hand a `--`
+  # to the script as a literal argument.
+  case ${RUN_ARGV[0]} in
+    devbox | npm) RUN_ARGV+=(--) ;;
+  esac
+  RUN_ARGV+=("${FORWARDED[@]}")
 }
 
 # --- backends ---------------------------------------------------------------
@@ -202,7 +215,8 @@ candidates() {
 # --- main -------------------------------------------------------------------
 
 main() {
-  local mode=run forced="" key="" prompt choice
+  local mode=run forced="" key="" prompt choice printed
+  FORWARDED=()
 
   while (($#)); do
     case $1 in
@@ -212,6 +226,7 @@ main() {
       --print) mode=print ;;
       --preview) mode=preview; key=${2-}; shift ;;
       --backend) forced=${2-}; shift ;;
+      --) shift; FORWARDED=("$@"); break ;;
       *) die "unknown argument: $1" ;;
     esac
     shift
@@ -265,7 +280,8 @@ main() {
 
   set_run_argv "$choice"
   if [[ $mode == print ]]; then
-    printf '%s\n' "${RUN_ARGV[*]}"
+    printed=$(printf '%q ' "${RUN_ARGV[@]}")
+    printf '%s\n' "${printed% }"
     return 0
   fi
 

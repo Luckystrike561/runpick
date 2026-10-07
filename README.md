@@ -27,7 +27,7 @@ devbox run
 
 ```json
 {
-  "include": ["github:Luckystrike561/runpick/tags/v1.3.0"]
+  "include": ["github:Luckystrike561/runpick/tags/v1.4.0"]
 }
 ```
 
@@ -39,14 +39,14 @@ devbox run pick
 ```
 
 works with nothing installed globally and nothing else added to `devbox.json`.
-Drop `tags/v1.3.0` for the tip of `main`.
+Drop `tags/v1.4.0` for the tip of `main`.
 
 If a project already has a script called `pick`, its own wins — devbox gives
 the project's `devbox.json` precedence over an included plugin. The plugin
 exports `$RUNPICK_BIN`, so claiming any other name is one line:
 
 ```json
-{ "shell": { "scripts": { "runpick": ["bash \"$RUNPICK_BIN\""] } } }
+{ "shell": { "scripts": { "runpick": ["bash \"$RUNPICK_BIN\" \"$@\""] } } }
 ```
 
 runpick recognises that command as itself, so it never lists the picker among
@@ -67,6 +67,7 @@ else's repo you have just cloned. Requires `bash`, `jq` and `fzf` on `PATH`;
 
 ```bash
 runpick                    # pick and run
+runpick -- --release -v    # pick and run with these arguments
 runpick --print            # pick and print the command instead
 runpick --backend npm      # force a backend
 runpick --list             # every candidate, for scripting
@@ -75,6 +76,27 @@ runpick --preview <key>    # one script's description and command
 
 Run it anywhere inside a repo: the project root is found by walking up from the
 working directory.
+
+### Passing arguments to the picked script
+
+Everything after `--` goes to the picked script verbatim and in order, and is
+never read as a runpick option: `runpick -- --list` runs the script with
+`--list`. runpick's own options only count before the `--`. With `--print`,
+the printed command carries the same arguments, shell-quoted so it can be
+pasted back.
+
+Through the plugin, devbox takes the first `--` for itself, so the picker's
+separator is the second one:
+
+```bash
+devbox run pick -- -- --release   # runs the picked script with --release
+```
+
+devbox hands the arguments to a script as `$@`, so a devbox script only sees
+them if its command uses them, as in `"scripts/build.sh \"$@\""`. This is
+devbox's behaviour, the same as running `devbox run <script> -- <args>`
+directly. A literal `--` cannot be forwarded to a devbox script, since devbox
+consumes it.
 
 ## Backends
 

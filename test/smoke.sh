@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Exercises every non-interactive path against fixtures. No fzf, no TTY.
+# Exercises every path against fixtures, with no TTY: fzf and the script
+# runners are replaced by stubs, so the run path can be checked too.
 set -euo pipefail
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -96,6 +97,72 @@ build	build" \
   "$("$runpick" --list)"
 
 check "npm: preview shows the command" "vitest" "$("$runpick" --preview test)"
+
+# --- forwarding through the picker -------------------------------------------
+
+stubs=$work/stubs
+mkdir -p "$stubs"
+cat >"$stubs/fzf" <<'EOF'
+#!/usr/bin/env bash
+cat >/dev/null
+printf '%s\n' "$PICK"
+EOF
+cat >"$stubs/runner" <<'EOF'
+#!/usr/bin/env bash
+printf '%s' "$(basename "$0")"
+printf ' [%s]' "$@"
+echo
+EOF
+chmod +x "$stubs/fzf" "$stubs/runner"
+for runner in devbox npm pnpm; do ln -s runner "$stubs/$runner"; done
+
+pick() { # key runpick-args...
+  PICK=$1 PATH=$stubs:$PATH "$runpick" "${@:2}"
+}
+
+cd "$work/dbx"
+
+check "no --: runs the picked script with no arguments" \
+  "devbox [run] [build]" \
+  "$(pick build)"
+
+check "no --: --print is unchanged" \
+  "devbox run build" \
+  "$(pick build --print)"
+
+check "bare --: same as no --" \
+  "devbox [run] [build]" \
+  "$(pick build --)"
+
+check "after --: own flags and awkward words reach the script in order" \
+  "devbox [run] [build] [--] [--list] [--print] [--help] [--version] [--preview] [--backend] [two words] []" \
+  "$(pick build -- --list --print --help --version --preview --backend 'two words' '')"
+
+check "before --: --list keeps its meaning" \
+  "build	🔨 build
+inline	inline
+docs	docs" \
+  "$(pick build --list -- --print)"
+
+check "before --: --print prints the forwarded arguments quoted" \
+  'devbox run build -- --list two\ words' \
+  "$(pick build --print -- --list 'two words')"
+
+check "--print output, pasted back, runs the same arguments" \
+  "devbox [run] [build] [--] [--help] [it's] [\$HOME] [a;b]" \
+  "$(PATH=$stubs:$PATH eval "$(pick build --print -- --help "it's" '$HOME' 'a;b')")"
+
+cd "$work/npm"
+check "pnpm: forwards without a separator, which pnpm would pass on literally" \
+  "pnpm [run] [test] [--list]" \
+  "$(pick test -- --list)"
+
+mkdir -p "$work/npm-plain"
+cp "$work/npm/package.json" "$work/npm-plain/"
+cd "$work/npm-plain"
+check "npm: forwards after --, so npm does not read the flags as its own" \
+  "npm [run] [test] [--] [--list]" \
+  "$(pick test -- --list)"
 
 # --- error paths -------------------------------------------------------------
 
