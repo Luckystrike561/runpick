@@ -1,19 +1,15 @@
 #!/usr/bin/env bash
-# runpick — pick a project script with fzf and run it.
+# runpick — pick a devbox script with fzf and run it.
 #
 # Copyright 2026 Luckystrike561
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 
-VERSION=1.4.0
+VERSION=1.1.0
 
 # Resolved eagerly: fzf runs the preview as a subprocess, which needs a path
 # that does not depend on the caller's working directory.
 SELF=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")
-
-# Project roots are found by walking up from the working directory, so runpick
-# works from anywhere inside a repo and needs no per-project installation.
-MANIFESTS=(devbox.json package.json)
 
 die() {
   printf 'runpick: %s\n' "$1" >&2
@@ -22,90 +18,29 @@ die() {
 
 usage() {
   cat <<'EOF'
-runpick — pick a project script with fzf and run it
+runpick — pick a devbox script with fzf and run it
 
-usage:
-  runpick [--backend devbox|npm] [--args] [--print]
+usage (inside `devbox run` or `devbox shell`):
+  runpick [--args] [--print]
   runpick --list
   runpick --preview <key>
   runpick --version | --help
 
 options:
-  --backend NAME  force a backend instead of detecting one
-  --list          print "key<TAB>label" for every candidate and exit
+  --list          print every candidate script name and exit
   --args          after the pick, prompt for arguments to pass to the script
   --print         print the command for the chosen script instead of running it
-  --preview KEY   print one script's description and command (used by fzf)
-
-conventions:
-  When a script's command is a file in the repo, runpick reads three optional
-  headers from it:
-
-    # @emoji 🎯
-    # @description Shown in the preview pane
-    # @ignore      Hidden from the picker
-
-  Repos that use none of these still work; the preview shows the raw command.
+  --preview KEY   print one script's command (used by fzf)
 EOF
 }
 
-# --- project discovery ------------------------------------------------------
-
-find_root() {
-  local dir=$PWD manifest
-  while :; do
-    for manifest in "${MANIFESTS[@]}"; do
-      [[ -f $dir/$manifest ]] && { printf '%s\n' "$dir"; return 0; }
-    done
-    [[ $dir == / ]] && return 1
-    dir=$(dirname "$dir")
-  done
-}
-
-manifest_for() {
-  case $1 in
-    devbox) printf 'devbox.json\n' ;;
-    npm) printf 'package.json\n' ;;
-  esac
-}
-
-detect_backend() {
-  [[ -f $ROOT/devbox.json ]] && { printf 'devbox\n'; return 0; }
-  [[ -f $ROOT/package.json ]] && { printf 'npm\n'; return 0; }
-  return 1
-}
-
-# npm, pnpm, yarn and bun all read the same `scripts` object, so only the
-# runner differs. Pick it from the lockfile rather than asking.
-package_manager() {
-  [[ -f $ROOT/bun.lockb || -f $ROOT/bun.lock ]] && { printf 'bun\n'; return; }
-  [[ -f $ROOT/pnpm-lock.yaml ]] && { printf 'pnpm\n'; return; }
-  [[ -f $ROOT/yarn.lock ]] && { printf 'yarn\n'; return; }
-  printf 'npm\n'
-}
-
 # argv that runs $1 with the forwarded arguments, as a global array so no
-# quoting survives a subshell.
+# quoting survives a subshell. devbox swallows one `--` after the script name,
+# so runpick adds its own and a `--` the user typed reaches the script.
 set_run_argv() {
-  case $BACKEND in
-    devbox) RUN_ARGV=(devbox run "$1") ;;
-    npm) RUN_ARGV=("$(package_manager)" run "$1") ;;
-  esac
+  RUN_ARGV=(devbox run "$1")
   ((${#FORWARDED[@]})) || return 0
-  runner_strips_separator && RUN_ARGV+=(--)
-  RUN_ARGV+=("${FORWARDED[@]}")
-}
-
-# Whether the runner swallows one `--` after the script name. Those runners
-# get one of their own, so a `--` the user typed survives. npm also reads
-# flags as its own without it, and yarn 1 treats everything before a later
-# `--` as yarn options. pnpm and yarn 2+ would pass it on as an argument.
-runner_strips_separator() {
-  case ${RUN_ARGV[0]} in
-    devbox | npm | bun) return 0 ;;
-    yarn) [[ ! -f $ROOT/.yarnrc.yml ]] ;;
-    *) return 1 ;;
-  esac
+  RUN_ARGV+=(-- "${FORWARDED[@]}")
 }
 
 # Reads one line from stdin into FORWARDED. Quotes and backslashes group words
@@ -120,8 +55,6 @@ read_forwarded() {
     die "could not split the arguments: $line"
   eval "FORWARDED=($quoted)"
 }
-
-# --- backends ---------------------------------------------------------------
 
 # devbox.json is JSONC: devbox accepts // and /* */ comments, jq does not.
 # Stripping them needs to respect string contents, or the `https://` in
@@ -155,84 +88,33 @@ strip_comments() {
   ' "$1"
 }
 
-# Normalised copy of the active manifest, so every jq call below reads plain
-# JSON regardless of what the project wrote.
-load_manifest() {
-  local src=$ROOT/$(manifest_for "$BACKEND")
-  MANIFEST=$(mktemp "${TMPDIR:-/tmp}/runpick.XXXXXX")
-  trap 'rm -f "$MANIFEST"' EXIT
-  strip_comments "$src" >"$MANIFEST"
-  jq -e . "$MANIFEST" >/dev/null 2>&1 ||
-    die "$src is not valid JSON, even with comments stripped"
-}
-
-keys() {
-  case $BACKEND in
-    devbox) jq -r '.shell.scripts // {} | keys_unsorted[]' "$MANIFEST" ;;
-    npm) jq -r '.scripts // {} | keys_unsorted[]' "$MANIFEST" ;;
-  esac
-}
-
-# A devbox script may be a string or an array of lines; npm is always a string.
-command_for() {
-  case $BACKEND in
-    devbox)
-      jq -r --arg k "$1" \
-        '.shell.scripts[$k] | if type == "array" then join("\n") else . end' \
-        "$MANIFEST"
-      ;;
-    npm) jq -r --arg k "$1" '.scripts[$k]' "$MANIFEST" ;;
-  esac
-}
-
-# --- script metadata --------------------------------------------------------
-
-# Only the first token is considered: `scripts/build.sh --release` points at a
-# file, `npm ci && tsc` does not.
-script_file() {
-  local first=${1%% *}
-  [[ -n $first && -f $ROOT/$first ]] && printf '%s\n' "$ROOT/$first"
-}
-
-meta() {
-  sed -n "s/^# @$2 //p" "$1" | head -1
+# SCRIPTS holds .shell.scripts as {key: command}, with array scripts joined
+# into one multi-line string.
+load_scripts() {
+  local src=$ROOT/devbox.json
+  [[ -f $src ]] || die "no devbox.json in $ROOT"
+  SCRIPTS=$(strip_comments "$src" | jq -c '
+    .shell.scripts // {}
+    | map_values(if type == "array" then join("\n") else . end)
+  ' 2>/dev/null) || die "$src is not valid JSON, even with comments stripped"
 }
 
 preview() {
-  local cmd file
-  cmd=$(command_for "$1") || return 0
-  file=$(script_file "$cmd") || true
-  [[ -n ${file:-} ]] && meta "$file" description
-  printf '%s\n' "$cmd"
+  jq -r --arg k "$1" '.[$k] // empty' <<<"$SCRIPTS"
 }
 
+# The picker never lists itself. Matched case-insensitively so an alias
+# written as `bash "$RUNPICK_BIN"` counts.
 candidates() {
-  local key cmd file emoji me
-  me=$(basename "$SELF")
-  keys | while read -r key; do
-    cmd=$(command_for "$key")
-    # Never offer to launch the picker from inside the picker. Matched
-    # case-insensitively so an alias written as `bash "$RUNPICK_BIN"` counts.
-    case $(printf '%s' "$cmd" | tr '[:upper:]' '[:lower:]') in
-      *"$me"*) continue ;;
-    esac
-    file=$(script_file "$cmd") || true
-    # @ignore marks an action too destructive to sit one keystroke away.
-    if [[ -n ${file:-} ]] && grep -q '^# @ignore' "$file"; then
-      continue
-    fi
-    emoji=""
-    [[ -n ${file:-} ]] && emoji=$(meta "$file" emoji)
-    # Field 1 is the value fzf returns, field 2 is the label it shows. Keeping
-    # them apart lets the label carry an emoji without polluting the value.
-    printf '%s\t%s\n' "$key" "${emoji:+$emoji }$key"
-  done
+  jq -r --arg me "$(basename "$SELF")" '
+    to_entries[]
+    | select(.value | ascii_downcase | contains($me) | not)
+    | .key
+  ' <<<"$SCRIPTS"
 }
-
-# --- main -------------------------------------------------------------------
 
 main() {
-  local mode=run forced="" key="" prompt choice printed ask_args=false
+  local mode=run key="" listing choice printed ask_args=false
   FORWARDED=()
 
   while (($#)); do
@@ -242,29 +124,18 @@ main() {
       --list) mode=list ;;
       --print) mode=print ;;
       --preview) mode=preview; key=${2-}; shift ;;
-      --backend) forced=${2-}; shift ;;
       --args) ask_args=true ;;
       *) die "unknown argument: $1" ;;
     esac
     shift
   done
 
-  command -v jq >/dev/null || die "jq is required (https://jqlang.github.io/jq/)"
-
-  ROOT=$(find_root) || die "no devbox.json or package.json in $PWD or any parent"
-
-  if [[ -n $forced ]]; then
-    case $forced in
-      devbox | npm) BACKEND=$forced ;;
-      *) die "unknown backend: $forced (expected devbox or npm)" ;;
-    esac
-    [[ -f $ROOT/$(manifest_for "$BACKEND") ]] ||
-      die "backend $forced requested but $(manifest_for "$BACKEND") is missing in $ROOT"
-  else
-    BACKEND=$(detect_backend) || die "no supported manifest in $ROOT"
-  fi
-
-  load_manifest
+  # devbox resolves the project from any subdirectory and exports its root to
+  # every `devbox run` and `devbox shell`.
+  ROOT=${DEVBOX_PROJECT_ROOT:-}
+  [[ -n $ROOT ]] || die "DEVBOX_PROJECT_ROOT is unset; run via 'devbox run pick'"
+  command -v jq >/dev/null || die "jq is required"
+  load_scripts
 
   case $mode in
     preview)
@@ -275,24 +146,15 @@ main() {
     list) candidates; return 0 ;;
   esac
 
-  set_run_argv ""
-  prompt="${RUN_ARGV[0]} ${RUN_ARGV[1]} "
-
-  local listing
   listing=$(candidates)
-  [[ -n $listing ]] ||
-    die "no runnable scripts in $ROOT/$(manifest_for "$BACKEND")"
-
-  command -v fzf >/dev/null || die "fzf is required for the picker; run '${prompt}<script>' directly"
+  [[ -n $listing ]] || die "no runnable scripts in $ROOT/devbox.json"
+  command -v fzf >/dev/null || die "fzf is required for the picker"
 
   choice=$(
-    printf '%s\n' "$listing" |
-      fzf --prompt="$prompt" --height=40% --reverse --no-multi \
-        --delimiter='\t' --with-nth=2 --accept-nth=1 \
-        --preview="bash $(printf '%q' "$SELF") --backend $BACKEND --preview {1}" \
-        --preview-window='down,4,wrap'
+    fzf --prompt="devbox run " --height=40% --reverse --no-multi \
+      --preview="bash $(printf '%q' "$SELF") --preview {}" \
+      --preview-window='down,4,wrap' <<<"$listing"
   ) || return 0
-
   [[ -n $choice ]] || return 0
 
   set_run_argv "$choice"

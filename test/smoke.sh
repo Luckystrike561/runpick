@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Exercises every path against fixtures, with no TTY: fzf and the script
-# runners are replaced by stubs, so the run path can be checked too.
+# Exercises runpick against fixtures without a TTY. Run-mode checks drive fzf
+# with --filter, forwarding checks replace it with a stub, and both stand in a
+# fake `devbox`, so nothing real is executed.
 set -euo pipefail
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -21,19 +22,20 @@ check() { # name expected actual
   fi
 }
 
-# --- fixture: devbox with JSONC comments, a described script and an @ignore ---
+# --- fixture: devbox.json with JSONC comments, string and array scripts ------
 
-mkdir -p "$work/dbx/scripts/deep/nested"
+mkdir -p "$work/dbx/deep/nested"
 cat >"$work/dbx/devbox.json" <<'EOF'
 {
   "$schema": "https://example.com/devbox.schema.json",
   "shell": {
     // A comment devbox accepts and jq does not.
     "scripts": {
-      "build": ["scripts/build.sh"],
+      "build": ["make build"],
       /* block comment */
-      "danger": ["scripts/danger.sh"],
-      "inline": ["echo hi && echo there"],
+      "inline": "echo hi && echo there",
+      "multi": ["make one", "echo after"],
+      "deploy prod": ["echo deploying"],
       "docs": ["echo https://example.com/a//b and done"],
       "pick": ["runpick"],
       "alias": ["bash \"$RUNPICK_BIN\""]
@@ -41,33 +43,26 @@ cat >"$work/dbx/devbox.json" <<'EOF'
   }
 }
 EOF
-cat >"$work/dbx/scripts/build.sh" <<'EOF'
-#!/usr/bin/env bash
-# @emoji 🔨
-# @description Build the thing
-EOF
-cat >"$work/dbx/scripts/danger.sh" <<'EOF'
-#!/usr/bin/env bash
-# @ignore needs sudo
-EOF
-chmod +x "$work/dbx/scripts"/*.sh
+export DEVBOX_PROJECT_ROOT=$work/dbx
+cd "$DEVBOX_PROJECT_ROOT"
 
-cd "$work/dbx"
+listing="build
+inline
+multi
+deploy prod
+docs"
 
-check "devbox: hides @ignore, and the picker under either spelling" \
-  "build	🔨 build
-inline	inline
-docs	docs" \
-  "$("$runpick" --list)"
+check "devbox: lists scripts in file order, hiding the picker under either spelling" \
+  "$listing" "$("$runpick" --list)"
 
-check "devbox: preview shows description then command" \
-  "Build the thing
-scripts/build.sh" \
-  "$("$runpick" --preview build)"
-
-check "devbox: preview of an inline command has no description" \
+check "devbox: preview shows a string script's command" \
   "echo hi && echo there" \
   "$("$runpick" --preview inline)"
+
+check "devbox: preview joins an array script one line per entry" \
+  "make one
+echo after" \
+  "$("$runpick" --preview multi)"
 
 # A naive `//` strip would truncate this to `echo https:`, and stripping inside
 # the manifest's own "$schema" value would stop the file parsing at all.
@@ -75,28 +70,29 @@ check "devbox: // inside a string is not treated as a comment" \
   "echo https://example.com/a//b and done" \
   "$("$runpick" --preview docs)"
 
-cd "$work/dbx/scripts/deep/nested"
-check "root is found by walking up" \
-  "build	🔨 build
-inline	inline
-docs	docs" \
-  "$("$runpick" --list)"
+cd "$work/dbx/deep/nested"
+check "root comes from DEVBOX_PROJECT_ROOT, not the working directory" \
+  "$listing" "$("$runpick" --list)"
 
-# --- fixture: package.json, lockfile picks the runner ------------------------
+# --- run mode: fzf --filter picks non-interactively, fake devbox records argv ---
 
-mkdir -p "$work/npm"
-cat >"$work/npm/package.json" <<'EOF'
-{ "name": "fix", "scripts": { "test": "vitest", "build": "tsc" } }
+if command -v fzf >/dev/null; then
+  mkdir -p "$work/bin"
+  cat >"$work/bin/devbox" <<'EOF'
+#!/usr/bin/env bash
+printf 'cwd=%s argv=%s\n' "$PWD" "$*"
 EOF
-touch "$work/npm/pnpm-lock.yaml"
-cd "$work/npm"
+  chmod +x "$work/bin/devbox"
+  pick() { FZF_DEFAULT_OPTS="--filter=$(printf %q "$1")" PATH="$work/bin:$PATH" "$runpick" "${@:2}" </dev/null; }
 
-check "npm: lists scripts" \
-  "test	test
-build	build" \
-  "$("$runpick" --list)"
+  check "run: execs devbox run <key> from the project root" \
+    "cwd=$work/dbx argv=run build" "$(pick build)"
 
-check "npm: preview shows the command" "vitest" "$("$runpick" --preview test)"
+  check "print: shell-quotes a key with a space" \
+    'devbox run deploy\ prod' "$(pick 'deploy prod' --print)"
+else
+  printf 'skip run mode: fzf not on PATH\n'
+fi
 
 # --- forwarding through the picker -------------------------------------------
 
@@ -107,16 +103,15 @@ cat >"$stubs/fzf" <<'EOF'
 cat >/dev/null
 printf '%s\n' "$PICK"
 EOF
-cat >"$stubs/runner" <<'EOF'
+cat >"$stubs/devbox" <<'EOF'
 #!/usr/bin/env bash
-printf '%s' "$(basename "$0")"
+printf 'devbox'
 printf ' [%s]' "$@"
 echo
 EOF
-chmod +x "$stubs/fzf" "$stubs/runner"
-for runner in devbox npm pnpm yarn bun; do ln -s runner "$stubs/$runner"; done
+chmod +x "$stubs/fzf" "$stubs/devbox"
 
-pick() { # key runpick-args... (stdin: the line typed at the --args prompt)
+stub_pick() { # key runpick-args... (stdin: the line typed at the --args prompt)
   PICK=$1 PATH=$stubs:$PATH "$runpick" "${@:2}"
 }
 
@@ -124,81 +119,54 @@ cd "$work/dbx"
 
 check "no --args: runs the picked script with no arguments, reading nothing" \
   "devbox [run] [build]" \
-  "$(echo '--release' | pick build)"
+  "$(echo '--release' | stub_pick build)"
 
 check "no --args: --print is unchanged" \
   "devbox run build" \
-  "$(pick build --print </dev/null)"
+  "$(stub_pick build --print </dev/null)"
 
+# devbox swallows one `--`, so the typed one must arrive behind runpick's own.
 check "--args: typed words reach the script in order, quoted but unexpanded" \
   "devbox [run] [build] [--] [--] [--list] [--help] [two words] [a b] [\$HOME] [\$(date)] [*]" \
-  "$(printf '%s\n' "-- --list --help 'two words' a\\ b '\$HOME' \$(date) *" | pick build --args)"
+  "$(printf '%s\n' "-- --list --help 'two words' a\\ b '\$HOME' \$(date) *" | stub_pick build --args)"
 
 check "--args: an empty line runs with no arguments" \
   "devbox [run] [build]" \
-  "$(echo '  ' | pick build --args)"
+  "$(echo '  ' | stub_pick build --args)"
 
 check "--args: Ctrl-D cancels without running" \
   "0:" \
-  "$(out=$(pick build --args </dev/null); echo "$?:$out")"
+  "$(out=$(stub_pick build --args </dev/null); echo "$?:$out")"
 
 check "--args: an unmatched quote is rejected" \
   "1" \
-  "$(echo "it's" | pick build --args >/dev/null 2>&1; echo $?)"
+  "$(echo "it's" | stub_pick build --args >/dev/null 2>&1; echo $?)"
 
 check "--args --print: prints the arguments shell-quoted" \
   'devbox run build -- --list two\ words' \
-  "$(echo "--list 'two words'" | pick build --args --print)"
+  "$(echo "--list 'two words'" | stub_pick build --args --print)"
 
 check "--args --print: the output, pasted back, runs the same arguments" \
   "devbox [run] [build] [--] [--help] [it's] [\$HOME] [a;b]" \
-  "$(PATH=$stubs:$PATH eval "$(echo "--help \"it's\" '\$HOME' 'a;b'" | pick build --args --print)")"
-
-runner_gets() { # dir lockfiles...: runs the picker there with `-- --list` typed
-  mkdir -p "$work/$1"
-  cp "$work/npm/package.json" "$work/$1/"
-  (cd "$work/$1" && touch package.json "${@:2}" && echo '-- --list' | pick test --args)
-}
-
-check "pnpm: no separator, which pnpm would pass on as an argument" \
-  "pnpm [run] [test] [--] [--list]" \
-  "$(cd "$work/npm" && echo '-- --list' | pick test --args)"
-
-check "npm: a separator of its own, so npm does not read the flags" \
-  "npm [run] [test] [--] [--] [--list]" \
-  "$(runner_gets npm-plain)"
-
-check "bun: a separator of its own, which bun swallows" \
-  "bun [run] [test] [--] [--] [--list]" \
-  "$(runner_gets bun bun.lock)"
-
-check "yarn 1: a separator of its own, which yarn 1 swallows" \
-  "yarn [run] [test] [--] [--] [--list]" \
-  "$(runner_gets yarn1 yarn.lock)"
-
-check "yarn 2+: no separator, which yarn 2+ would pass on as an argument" \
-  "yarn [run] [test] [--] [--list]" \
-  "$(runner_gets yarn4 yarn.lock .yarnrc.yml)"
+  "$(PATH=$stubs:$PATH eval "$(echo "--help \"it's\" '\$HOME' 'a;b'" | stub_pick build --args --print)")"
 
 # --- error paths -------------------------------------------------------------
 
 mkdir -p "$work/empty"
 echo '{"shell":{"scripts":{}}}' >"$work/empty/devbox.json"
-cd "$work/empty"
 check "empty manifest is rejected" "1" \
-  "$("$runpick" >/dev/null 2>&1; echo $?)"
-
-cd "$work/dbx"
-check "unknown backend is rejected" "1" \
-  "$("$runpick" --backend bogus --list >/dev/null 2>&1; echo $?)"
+  "$(DEVBOX_PROJECT_ROOT=$work/empty "$runpick" >/dev/null 2>&1; echo $?)"
 
 check "unknown argument is rejected" "1" \
   "$("$runpick" --nope >/dev/null 2>&1; echo $?)"
 
-mkdir -p "$work/bare"
-cd "$work/bare"
-check "no manifest anywhere is rejected" "1" \
-  "$("$runpick" --list >/dev/null 2>&1; echo $?)"
+mkdir -p "$work/npm"
+echo '{ "scripts": { "test": "vitest" } }' >"$work/npm/package.json"
+check "package.json alone is not a devbox project" "1" \
+  "$(DEVBOX_PROJECT_ROOT=$work/npm "$runpick" --list >/dev/null 2>&1; echo $?)"
+
+check "running outside devbox is rejected" "1" \
+  "$(env -u DEVBOX_PROJECT_ROOT "$runpick" --list >/dev/null 2>&1; echo $?)"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [[ $fail -eq 0 ]]
