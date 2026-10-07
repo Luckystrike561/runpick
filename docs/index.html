@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>runpick: pick a devbox script with fzf</title>
+  <meta name="description" content="Pick a devbox script with fzf and run it. One include line in devbox.json.">
+  <link rel="icon" href="https://raw.githubusercontent.com/Luckystrike561/runpick/main/assets/logo.png">
+  <style>
+    :root {
+      --background: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--background);
+      color: var(--text);
+      font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    main { max-width: 820px; margin: 0 auto; padding: 48px 20px 64px; }
+    header { text-align: center; }
+    header img.logo { width: min(520px, 100%); }
+    .tagline { font-size: 1.25rem; color: var(--muted); margin: 8px 0 24px; }
+    .actions a {
+      display: inline-block;
+      margin: 0 6px;
+      padding: 8px 18px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      text-decoration: none;
+    }
+    .actions a.primary { background: #238636; border-color: #2ea043; }
+    .demo { margin: 40px 0; width: 100%; border-radius: 8px; border: 1px solid var(--border); }
+    h2 { margin-top: 48px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+    a { color: var(--accent); }
+    code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.9em; }
+    p code, li code { background: var(--surface); padding: 2px 6px; border-radius: 4px; }
+    .snippet { position: relative; }
+    pre {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 16px;
+      overflow-x: auto;
+    }
+    .copy {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: var(--background);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 2px 10px;
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.85rem;
+    }
+    kbd { border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; font-size: 0.85em; }
+    footer { margin-top: 64px; text-align: center; color: var(--muted); font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <img class="logo" src="https://raw.githubusercontent.com/Luckystrike561/runpick/main/assets/logo.png" alt="runpick">
+    <p class="tagline">Pick a <a href="https://www.jetify.com/devbox">devbox</a> script with <a href="https://github.com/junegunn/fzf">fzf</a> and run it.</p>
+    <p class="actions">
+      <a class="primary" href="#install">Get started</a>
+      <a href="https://github.com/Luckystrike561/runpick">GitHub</a>
+    </p>
+  </header>
+
+  <img class="demo" src="https://raw.githubusercontent.com/Luckystrike561/runpick/main/demo/demo.gif" alt="runpick demo: filtering devbox scripts in fzf and running one">
+
+  <h2 id="install">Install</h2>
+  <p>Add one line to your project's <code>devbox.json</code>:</p>
+  <div class="snippet">
+    <button class="copy" type="button">Copy</button>
+<pre><code>"include": ["github:Luckystrike561/runpick/tags/1.0.0"]</code></pre>
+  </div>
+  <p>Then, from anywhere in the project:</p>
+  <div class="snippet">
+    <button class="copy" type="button">Copy</button>
+<pre><code>devbox run pick</code></pre>
+  </div>
+  <p>Type to filter, <kbd>Enter</kbd> to run, <kbd>Esc</kbd> to cancel. The preview pane shows the selected script's command. The plugin brings its own <code>jq</code> and <code>fzf</code>.</p>
+
+  <h2>Example</h2>
+  <p>A complete <code>devbox.json</code>:</p>
+  <div class="snippet">
+    <button class="copy" type="button">Copy</button>
+<pre><code>{
+  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/main/.schema/devbox.schema.json",
+  "include": ["github:Luckystrike561/runpick/tags/1.0.0"],
+  "shell": {
+    "scripts": {
+      "build": "echo 'compiling...' &amp;&amp; sleep 1 &amp;&amp; echo 'built dist/app'",
+      "test": ["echo 'running 42 tests'", "sleep 1", "echo 'all green'"],
+      "lint": "echo 'no issues found'",
+      "db:migrate": "echo 'applied 3 migrations'",
+      "db:seed": "echo 'seeded 100 rows'",
+      "release": ["echo 'tagging v1.2.0'", "echo 'pushed'"]
+    }
+  }
+}</code></pre>
+  </div>
+
+  <h2>Options</h2>
+  <p>Inside <code>devbox shell</code>, the plugin exports <code>$RUNPICK_BIN</code>:</p>
+<pre><code>bash "$RUNPICK_BIN" --print   # pick, then print the command instead of running it
+bash "$RUNPICK_BIN" --list    # list script names, one per line</code></pre>
+  <p>If your project already has a script named <code>pick</code>, yours wins. Give the picker another name with:</p>
+<pre><code>"runpick": ["bash \"$RUNPICK_BIN\""]</code></pre>
+
+  <h2>Limitations</h2>
+  <ul>
+    <li>Only scripts in the project's own <code>devbox.json</code> are listed, not scripts added by other plugins.</li>
+    <li><code>//</code> and <code>/* */</code> comments are supported. Trailing commas are not yet.</li>
+    <li>Pin a tag in <code>include</code>. An included plugin runs in your shell, so tracking <code>main</code> means running whatever lands there.</li>
+  </ul>
+
+  <footer>
+    Apache-2.0 · <a href="https://github.com/Luckystrike561/runpick">Luckystrike561/runpick</a>
+  </footer>
+</main>
+<script>
+  for (const button of document.querySelectorAll(".copy")) {
+    button.addEventListener("click", async () => {
+      const code = button.parentElement.querySelector("code").textContent;
+      await navigator.clipboard.writeText(code);
+      button.textContent = "Copied";
+      setTimeout(() => { button.textContent = "Copy"; }, 1500);
+    });
+  }
+</script>
+</body>
+</html>
