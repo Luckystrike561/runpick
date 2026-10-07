@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 
-VERSION=1.0.0
+VERSION=1.1.0
 
 # Resolved eagerly: fzf runs the preview as a subprocess, which needs a path
 # that does not depend on the caller's working directory.
@@ -21,16 +21,41 @@ usage() {
 runpick — pick a devbox script with fzf and run it
 
 usage (inside `devbox run` or `devbox shell`):
-  runpick [--print]
+  runpick [--args] [--print]
   runpick --list
   runpick --preview <key>
   runpick --version | --help
 
 options:
   --list          print every candidate script name and exit
+  --args          after the pick, prompt for arguments to pass to the script
   --print         print the command for the chosen script instead of running it
   --preview KEY   print one script's command (used by fzf)
 EOF
+}
+
+# argv that runs $1 with the forwarded arguments, as a global array so no
+# quoting survives a subshell. devbox swallows one `--` after the script name,
+# so runpick adds its own and a `--` the user typed reaches the script.
+set_run_argv() {
+  RUN_ARGV=(devbox run "$1")
+  ((${#FORWARDED[@]})) || return 0
+  RUN_ARGV+=(-- "${FORWARDED[@]}")
+}
+
+# Reads one line from stdin into FORWARDED. Quotes and backslashes group words,
+# but xargs only parses the line, so no `$VAR`, `$(...)` or glob is expanded,
+# and unlike a shell it keeps a backslash inside double quotes as typed.
+# bash re-quotes the words, since printf(1) has no %q on macOS. Fails when the
+# user cancels with Ctrl-D.
+read_forwarded() {
+  local line quoted prompt
+  printf -v prompt '%q ' "${RUN_ARGV[@]}"
+  IFS= read -r -e -p "$prompt" line || return 1
+  [[ $line == *[![:space:]]* ]] || return 0
+  quoted=$(printf '%s\n' "$line" | xargs bash -c 'printf "%q " "$@"' _) ||
+    die "could not split the arguments: $line"
+  eval "FORWARDED=($quoted)"
 }
 
 # devbox.json is JSONC: devbox accepts // and /* */ comments, jq does not.
@@ -91,7 +116,8 @@ candidates() {
 }
 
 main() {
-  local mode=run key="" listing choice
+  local mode=run key="" listing choice printed ask_args=false
+  FORWARDED=()
 
   while (($#)); do
     case $1 in
@@ -100,6 +126,7 @@ main() {
       --list) mode=list ;;
       --print) mode=print ;;
       --preview) mode=preview; key=${2-}; shift ;;
+      --args) ask_args=true ;;
       *) die "unknown argument: $1" ;;
     esac
     shift
@@ -132,13 +159,19 @@ main() {
   ) || return 0
   [[ -n $choice ]] || return 0
 
+  set_run_argv "$choice"
+  if $ask_args; then
+    read_forwarded || return 0
+    set_run_argv "$choice"
+  fi
   if [[ $mode == print ]]; then
-    printf 'devbox run %q\n' "$choice"
+    printed=$(printf '%q ' "${RUN_ARGV[@]}")
+    printf '%s\n' "${printed% }"
     return 0
   fi
 
   cd "$ROOT"
-  exec devbox run "$choice"
+  exec "${RUN_ARGV[@]}"
 }
 
 main "$@"

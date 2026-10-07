@@ -20,7 +20,7 @@
   <div class="wrap nav-inner">
     <a class="brand" href="#top">
       <img src="favicon.svg" alt="" width="28" height="28">
-      <span>runpick</span><span class="version">v1.0.0</span>
+      <span>runpick</span><span class="version">v1.1.0</span>
     </a>
     <div class="nav-links">
       <a href="#demo">demo</a>
@@ -52,8 +52,8 @@
     </p>
     <div class="cta">
       <div class="command" data-copy-source>
-        <span class="command-text"><span class="muted">"include": [</span>"github:Luckystrike561/runpick/tags/1.0.0"<span class="muted">]</span></span>
-        <button class="copy" type="button" data-copy="&quot;include&quot;: [&quot;github:Luckystrike561/runpick/tags/1.0.0&quot;]">copy</button>
+        <span class="command-text"><span class="muted">"include": [</span>"github:Luckystrike561/runpick/tags/1.1.0"<span class="muted">]</span></span>
+        <button class="copy" type="button" data-copy="&quot;include&quot;: [&quot;github:Luckystrike561/runpick/tags/1.1.0&quot;]">copy</button>
       </div>
       <a class="button" href="https://github.com/Luckystrike561/runpick">View on GitHub →</a>
     </div>
@@ -131,7 +131,7 @@
           <p>Add it to your project's <code>devbox.json</code>. Pin a tag: an included plugin runs in your shell.</p>
           <div class="snippet">
             <button class="copy" type="button">copy</button>
-<pre><code>"include": ["github:Luckystrike561/runpick/tags/1.0.0"]</code></pre>
+<pre><code>"include": ["github:Luckystrike561/runpick/tags/1.1.0"]</code></pre>
           </div>
         </div>
       </li>
@@ -160,7 +160,7 @@
       <button class="copy" type="button">copy</button>
 <pre><code><span class="tok-punct">{</span>
   <span class="tok-key">"$schema"</span>: <span class="tok-str">"https://raw.githubusercontent.com/jetify-com/devbox/main/.schema/devbox.schema.json"</span>,
-  <span class="tok-key">"include"</span>: [<span class="tok-str tok-hl">"github:Luckystrike561/runpick/tags/1.0.0"</span>],
+  <span class="tok-key">"include"</span>: [<span class="tok-str tok-hl">"github:Luckystrike561/runpick/tags/1.1.0"</span>],
   <span class="tok-key">"shell"</span>: {
     <span class="tok-key">"scripts"</span>: {
       <span class="tok-key">"build"</span>: <span class="tok-str">"echo 'compiling...' &amp;&amp; sleep 1 &amp;&amp; echo 'built dist/app'"</span>,
@@ -182,6 +182,7 @@
       <thead><tr><th>command</th><th>does</th></tr></thead>
       <tbody>
         <tr><td><code>devbox run pick</code></td><td>pick a script, then run it</td></tr>
+        <tr><td><code>devbox run pick --args</code></td><td>pick, then type arguments for the script</td></tr>
         <tr><td><code>bash "$RUNPICK_BIN" --print</code></td><td>pick, then print <code>devbox run &lt;name&gt;</code> instead of running it</td></tr>
         <tr><td><code>bash "$RUNPICK_BIN" --list</code></td><td>list script names, one per line</td></tr>
         <tr><td><code>bash "$RUNPICK_BIN" --version</code></td><td>print the version</td></tr>
@@ -191,7 +192,7 @@
     <p>Already have a script named <code>pick</code>? Yours wins. Give the picker another name:</p>
     <div class="snippet">
       <button class="copy" type="button">copy</button>
-<pre><code>"runpick": ["bash \"$RUNPICK_BIN\""]</code></pre>
+<pre><code>"runpick": ["bash \"$RUNPICK_BIN\" \"$@\""]</code></pre>
     </div>
   </section>
 

@@ -1,6 +1,6 @@
 {
   "name": "runpick",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Adds `devbox run pick`, an fzf picker over this project's devbox.json scripts. See https://github.com/Luckystrike561/runpick",
   "packages": [
     "jq@1.8.1",
@@ -15,7 +15,7 @@
   "shell": {
     "scripts": {
       "pick": [
-        "bash \"$RUNPICK_BIN\""
+        "bash \"$RUNPICK_BIN\" \"$@\""
       ]
     }
   }

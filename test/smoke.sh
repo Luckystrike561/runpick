@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Exercises runpick against fixtures without a TTY. Run-mode checks drive fzf
-# with --filter and stand in a fake `devbox`, so nothing real is executed.
+# with --filter, forwarding checks replace it with a stub, and both stand in a
+# fake `devbox`, so nothing real is executed.
 set -euo pipefail
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -92,6 +93,62 @@ EOF
 else
   printf 'skip run mode: fzf not on PATH\n'
 fi
+
+# --- forwarding through the picker -------------------------------------------
+
+stubs=$work/stubs
+mkdir -p "$stubs"
+cat >"$stubs/fzf" <<'EOF'
+#!/usr/bin/env bash
+cat >/dev/null
+printf '%s\n' "$PICK"
+EOF
+cat >"$stubs/devbox" <<'EOF'
+#!/usr/bin/env bash
+printf 'devbox'
+printf ' [%s]' "$@"
+echo
+EOF
+chmod +x "$stubs/fzf" "$stubs/devbox"
+
+stub_pick() { # key runpick-args... (stdin: the line typed at the --args prompt)
+  PICK=$1 PATH=$stubs:$PATH "$runpick" "${@:2}"
+}
+
+cd "$work/dbx"
+
+check "no --args: runs the picked script with no arguments, reading nothing" \
+  "devbox [run] [build]" \
+  "$(echo '--release' | stub_pick build)"
+
+check "no --args: --print is unchanged" \
+  "devbox run build" \
+  "$(stub_pick build --print </dev/null)"
+
+# devbox swallows one `--`, so the typed one must arrive behind runpick's own.
+check "--args: typed words reach the script in order, quoted but unexpanded" \
+  "devbox [run] [build] [--] [--] [--list] [--help] [two words] [a b] [\$HOME] [\$(date)] [*]" \
+  "$(printf '%s\n' "-- --list --help 'two words' a\\ b '\$HOME' \$(date) *" | stub_pick build --args)"
+
+check "--args: an empty line runs with no arguments" \
+  "devbox [run] [build]" \
+  "$(echo '  ' | stub_pick build --args)"
+
+check "--args: Ctrl-D cancels without running" \
+  "0:" \
+  "$(out=$(stub_pick build --args </dev/null); echo "$?:$out")"
+
+check "--args: an unmatched quote is rejected" \
+  "1" \
+  "$(echo "it's" | stub_pick build --args >/dev/null 2>&1; echo $?)"
+
+check "--args --print: prints the arguments shell-quoted" \
+  'devbox run build -- --list two\ words' \
+  "$(echo "--list 'two words'" | stub_pick build --args --print)"
+
+check "--args --print: the output, pasted back, runs the same arguments" \
+  "devbox [run] [build] [--] [--help] [it's] [\$HOME] [a;b]" \
+  "$(PATH=$stubs:$PATH eval "$(echo "--help \"it's\" '\$HOME' 'a;b'" | stub_pick build --args --print)")"
 
 # --- error paths -------------------------------------------------------------
 
