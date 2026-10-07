@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/main/.schema/devbox.schema.json",
-  "include": ["github:Luckystrike561/runpick/tags/1.0.0"],
+  "include": ["github:Luckystrike561/runpick/tags/1.1.0"],
   "shell": {
     "scripts": {
       "build": "echo 'compiling...' && sleep 1 && echo 'built dist/app'",
