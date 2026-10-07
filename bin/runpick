@@ -48,8 +48,9 @@ set_run_argv() {
 # glob is expanded. bash re-quotes the words, since printf(1) has no %q on
 # macOS. Fails when the user cancels with Ctrl-D.
 read_forwarded() {
-  local line quoted
-  IFS= read -r -e -p "${RUN_ARGV[*]} " line || return 1
+  local line quoted prompt
+  printf -v prompt '%q ' "${RUN_ARGV[@]}"
+  IFS= read -r -e -p "$prompt" line || return 1
   [[ $line == *[![:space:]]* ]] || return 0
   quoted=$(printf '%s\n' "$line" | xargs bash -c 'printf "%q " "$@"' _) ||
     die "could not split the arguments: $line"
