@@ -67,7 +67,7 @@ else's repo you have just cloned. Requires `bash`, `jq` and `fzf` on `PATH`;
 
 ```bash
 runpick                    # pick and run
-runpick -- --release -v    # pick and run with these arguments
+runpick --args             # pick, then type arguments for the script
 runpick --print            # pick and print the command instead
 runpick --backend npm      # force a backend
 runpick --list             # every candidate, for scripting
@@ -79,24 +79,45 @@ working directory.
 
 ### Passing arguments to the picked script
 
-Everything after `--` goes to the picked script verbatim and in order, and is
-never read as a runpick option: `runpick -- --list` runs the script with
-`--list`. runpick's own options only count before the `--`. With `--print`,
-the printed command carries the same arguments, shell-quoted so it can be
-pasted back.
+Add `--args` and, once you have picked a script, runpick asks for the
+arguments to run it with. The prompt shows the command so far, with readline
+editing. Enter on an empty line runs with no arguments, and Ctrl-D or Ctrl-C
+cancels without running anything. Without `--args` nothing is asked, and the
+script runs exactly as before.
 
-Through the plugin, devbox takes the first `--` for itself, so the picker's
-separator is the second one:
+Say the project wraps a CLI it builds, and the wrapper hands its arguments on:
 
-```bash
-devbox run pick -- -- --release   # runs the picked script with --release
+```json
+{
+  "shell": {
+    "scripts": {
+      "cli": ["cargo run \"$@\""]
+    }
+  }
+}
 ```
 
+Pick `cli`, then type what the binary should get, including the `--` that
+keeps cargo from reading `--list` itself:
+
+```
+$ devbox run pick --args
+  (pick cli)
+devbox run cli -- --list --format 'long names'
+```
+
+That runs `cargo run -- --list --format 'long names'`, so the binary sees
+`--list --format long names` (three words). The line is split like a shell
+command (quotes and backslashes group words) but nothing is expanded: a typed
+`$HOME`, `$(...)` or `*` reaches the script as written.
+
+runpick adds a `--` of its own for runners that swallow one (devbox, npm, bun,
+yarn 1), so any `--` you type is passed on intact. pnpm and yarn 2+ get none,
+because they would pass it to the script as an argument.
+
 devbox hands the arguments to a script as `$@`, so a devbox script only sees
-them if its command uses them, as in `"scripts/build.sh \"$@\""`. This is
-devbox's behaviour, the same as running `devbox run <script> -- <args>`
-directly. A literal `--` cannot be forwarded to a devbox script, since devbox
-consumes it.
+them if its command uses them, as `cli` does above. With `--print`, the printed
+command carries the arguments, shell-quoted so it can be pasted back.
 
 ## Backends
 

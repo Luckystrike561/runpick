@@ -25,7 +25,7 @@ usage() {
 runpick — pick a project script with fzf and run it
 
 usage:
-  runpick [--backend devbox|npm] [--print] [-- ARGS...]
+  runpick [--backend devbox|npm] [--args] [--print]
   runpick --list
   runpick --preview <key>
   runpick --version | --help
@@ -33,10 +33,9 @@ usage:
 options:
   --backend NAME  force a backend instead of detecting one
   --list          print "key<TAB>label" for every candidate and exit
+  --args          after the pick, prompt for arguments to pass to the script
   --print         print the command for the chosen script instead of running it
   --preview KEY   print one script's description and command (used by fzf)
-  -- ARGS...      pass ARGS verbatim to the chosen script, even ones that
-                  look like runpick options
 
 conventions:
   When a script's command is a file in the repo, runpick reads three optional
@@ -93,15 +92,33 @@ set_run_argv() {
     npm) RUN_ARGV=("$(package_manager)" run "$1") ;;
   esac
   ((${#FORWARDED[@]})) || return 0
-  # npm reads flags after the script name as its own unless `--` precedes
-  # them. devbox does not, but an explicit `--` keeps a forwarded flag from
-  # ever being taken for one of devbox's. pnpm, yarn and bun already forward
-  # everything after the script name, and pnpm and yarn 2+ would hand a `--`
-  # to the script as a literal argument.
-  case ${RUN_ARGV[0]} in
-    devbox | npm) RUN_ARGV+=(--) ;;
-  esac
+  runner_strips_separator && RUN_ARGV+=(--)
   RUN_ARGV+=("${FORWARDED[@]}")
+}
+
+# Whether the runner swallows one `--` after the script name. Those runners
+# get one of their own, so a `--` the user typed survives. npm also reads
+# flags as its own without it, and yarn 1 treats everything before a later
+# `--` as yarn options. pnpm and yarn 2+ would pass it on as an argument.
+runner_strips_separator() {
+  case ${RUN_ARGV[0]} in
+    devbox | npm | bun) return 0 ;;
+    yarn) [[ ! -f $ROOT/.yarnrc.yml ]] ;;
+    *) return 1 ;;
+  esac
+}
+
+# Reads one line from stdin into FORWARDED. Quotes and backslashes group words
+# as in a shell, but xargs only parses the line, so no `$VAR`, `$(...)` or
+# glob is expanded. bash re-quotes the words, since printf(1) has no %q on
+# macOS. Fails when the user cancels with Ctrl-D.
+read_forwarded() {
+  local line quoted
+  IFS= read -r -e -p "${RUN_ARGV[*]} " line || return 1
+  [[ $line == *[![:space:]]* ]] || return 0
+  quoted=$(printf '%s\n' "$line" | xargs bash -c 'printf "%q " "$@"' _) ||
+    die "could not split the arguments: $line"
+  eval "FORWARDED=($quoted)"
 }
 
 # --- backends ---------------------------------------------------------------
@@ -215,7 +232,7 @@ candidates() {
 # --- main -------------------------------------------------------------------
 
 main() {
-  local mode=run forced="" key="" prompt choice printed
+  local mode=run forced="" key="" prompt choice printed ask_args=false
   FORWARDED=()
 
   while (($#)); do
@@ -226,7 +243,7 @@ main() {
       --print) mode=print ;;
       --preview) mode=preview; key=${2-}; shift ;;
       --backend) forced=${2-}; shift ;;
-      --) shift; FORWARDED=("$@"); break ;;
+      --args) ask_args=true ;;
       *) die "unknown argument: $1" ;;
     esac
     shift
@@ -279,6 +296,10 @@ main() {
   [[ -n $choice ]] || return 0
 
   set_run_argv "$choice"
+  if $ask_args; then
+    read_forwarded || return 0
+    set_run_argv "$choice"
+  fi
   if [[ $mode == print ]]; then
     printed=$(printf '%q ' "${RUN_ARGV[@]}")
     printf '%s\n' "${printed% }"

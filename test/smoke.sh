@@ -114,55 +114,71 @@ printf ' [%s]' "$@"
 echo
 EOF
 chmod +x "$stubs/fzf" "$stubs/runner"
-for runner in devbox npm pnpm; do ln -s runner "$stubs/$runner"; done
+for runner in devbox npm pnpm yarn bun; do ln -s runner "$stubs/$runner"; done
 
-pick() { # key runpick-args...
+pick() { # key runpick-args... (stdin: the line typed at the --args prompt)
   PICK=$1 PATH=$stubs:$PATH "$runpick" "${@:2}"
 }
 
 cd "$work/dbx"
 
-check "no --: runs the picked script with no arguments" \
+check "no --args: runs the picked script with no arguments, reading nothing" \
   "devbox [run] [build]" \
-  "$(pick build)"
+  "$(echo '--release' | pick build)"
 
-check "no --: --print is unchanged" \
+check "no --args: --print is unchanged" \
   "devbox run build" \
-  "$(pick build --print)"
+  "$(pick build --print </dev/null)"
 
-check "bare --: same as no --" \
+check "--args: typed words reach the script in order, quoted but unexpanded" \
+  "devbox [run] [build] [--] [--] [--list] [--help] [two words] [a b] [\$HOME] [\$(date)] [*]" \
+  "$(printf '%s\n' "-- --list --help 'two words' a\\ b '\$HOME' \$(date) *" | pick build --args)"
+
+check "--args: an empty line runs with no arguments" \
   "devbox [run] [build]" \
-  "$(pick build --)"
+  "$(echo '  ' | pick build --args)"
 
-check "after --: own flags and awkward words reach the script in order" \
-  "devbox [run] [build] [--] [--list] [--print] [--help] [--version] [--preview] [--backend] [two words] []" \
-  "$(pick build -- --list --print --help --version --preview --backend 'two words' '')"
+check "--args: Ctrl-D cancels without running" \
+  "0:" \
+  "$(out=$(pick build --args </dev/null); echo "$?:$out")"
 
-check "before --: --list keeps its meaning" \
-  "build	🔨 build
-inline	inline
-docs	docs" \
-  "$(pick build --list -- --print)"
+check "--args: an unmatched quote is rejected" \
+  "1" \
+  "$(echo "it's" | pick build --args >/dev/null 2>&1; echo $?)"
 
-check "before --: --print prints the forwarded arguments quoted" \
+check "--args --print: prints the arguments shell-quoted" \
   'devbox run build -- --list two\ words' \
-  "$(pick build --print -- --list 'two words')"
+  "$(echo "--list 'two words'" | pick build --args --print)"
 
-check "--print output, pasted back, runs the same arguments" \
+check "--args --print: the output, pasted back, runs the same arguments" \
   "devbox [run] [build] [--] [--help] [it's] [\$HOME] [a;b]" \
-  "$(PATH=$stubs:$PATH eval "$(pick build --print -- --help "it's" '$HOME' 'a;b')")"
+  "$(PATH=$stubs:$PATH eval "$(echo "--help \"it's\" '\$HOME' 'a;b'" | pick build --args --print)")"
 
-cd "$work/npm"
-check "pnpm: forwards without a separator, which pnpm would pass on literally" \
-  "pnpm [run] [test] [--list]" \
-  "$(pick test -- --list)"
+runner_gets() { # dir lockfiles...: runs the picker there with `-- --list` typed
+  mkdir -p "$work/$1"
+  cp "$work/npm/package.json" "$work/$1/"
+  (cd "$work/$1" && touch package.json "${@:2}" && echo '-- --list' | pick test --args)
+}
 
-mkdir -p "$work/npm-plain"
-cp "$work/npm/package.json" "$work/npm-plain/"
-cd "$work/npm-plain"
-check "npm: forwards after --, so npm does not read the flags as its own" \
-  "npm [run] [test] [--] [--list]" \
-  "$(pick test -- --list)"
+check "pnpm: no separator, which pnpm would pass on as an argument" \
+  "pnpm [run] [test] [--] [--list]" \
+  "$(cd "$work/npm" && echo '-- --list' | pick test --args)"
+
+check "npm: a separator of its own, so npm does not read the flags" \
+  "npm [run] [test] [--] [--] [--list]" \
+  "$(runner_gets npm-plain)"
+
+check "bun: a separator of its own, which bun swallows" \
+  "bun [run] [test] [--] [--] [--list]" \
+  "$(runner_gets bun bun.lock)"
+
+check "yarn 1: a separator of its own, which yarn 1 swallows" \
+  "yarn [run] [test] [--] [--] [--list]" \
+  "$(runner_gets yarn1 yarn.lock)"
+
+check "yarn 2+: no separator, which yarn 2+ would pass on as an argument" \
+  "yarn [run] [test] [--] [--list]" \
+  "$(runner_gets yarn4 yarn.lock .yarnrc.yml)"
 
 # --- error paths -------------------------------------------------------------
 
