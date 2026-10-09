@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 
-VERSION=1.1.0
+VERSION=1.2.0
 
 # Resolved eagerly: fzf runs the preview as a subprocess, which needs a path
 # that does not depend on the caller's working directory.
@@ -21,12 +21,14 @@ usage() {
 runpick — pick a devbox script with fzf and run it
 
 usage (inside `devbox run` or `devbox shell`):
-  runpick [--args] [--print]
-  runpick --list
-  runpick --preview <key>
+  runpick [--npm] [--args] [--print]
+  runpick [--npm] --list
+  runpick [--npm] --preview <key>
   runpick --version | --help
 
 options:
+  --npm           pick from package.json scripts in the directory `devbox run`
+                  was invoked from, and run them with `npm run`
   --list          print every candidate script name and exit
   --args          after the pick, prompt for arguments to pass to the script
   --print         print the command for the chosen script instead of running it
@@ -35,10 +37,11 @@ EOF
 }
 
 # argv that runs $1 with the forwarded arguments, as a global array so no
-# quoting survives a subshell. devbox swallows one `--` after the script name,
-# so runpick adds its own and a `--` the user typed reaches the script.
+# quoting survives a subshell. devbox and npm each swallow one `--` after the
+# script name, so runpick adds its own and a `--` the user typed reaches the
+# script.
 set_run_argv() {
-  RUN_ARGV=(devbox run "$1")
+  RUN_ARGV=("${RUNNER[@]}" "$1")
   ((${#FORWARDED[@]})) || return 0
   RUN_ARGV+=(-- "${FORWARDED[@]}")
 }
@@ -92,13 +95,20 @@ strip_comments() {
 
 # SCRIPTS holds .shell.scripts as {key: command}, with array scripts joined
 # into one multi-line string.
-load_scripts() {
+load_devbox_scripts() {
   local src=$ROOT/devbox.json
   [[ -f $src ]] || die "no devbox.json in $ROOT"
   SCRIPTS=$(strip_comments "$src" | jq -c '
     .shell.scripts // {}
     | map_values(if type == "array" then join("\n") else . end)
   ' 2>/dev/null) || die "$src is not valid JSON, even with comments stripped"
+}
+
+load_npm_scripts() {
+  local src=$RUN_DIR/package.json
+  [[ -f $src ]] || die "no package.json in $RUN_DIR"
+  SCRIPTS=$(jq -c '.scripts // {}' "$src" 2>/dev/null) || die "$src is not valid JSON"
+  [[ $SCRIPTS != "{}" ]] || die "no scripts in $src"
 }
 
 preview() {
@@ -116,7 +126,7 @@ candidates() {
 }
 
 main() {
-  local mode=run key="" listing choice printed ask_args=false
+  local mode=run key="" listing choice printed preview_cmd ask_args=false npm_mode=false
   FORWARDED=()
 
   while (($#)); do
@@ -127,17 +137,31 @@ main() {
       --print) mode=print ;;
       --preview) mode=preview; key=${2-}; shift ;;
       --args) ask_args=true ;;
+      --npm) npm_mode=true ;;
       *) die "unknown argument: $1" ;;
     esac
     shift
   done
 
-  # devbox resolves the project from any subdirectory and exports its root to
-  # every `devbox run` and `devbox shell`.
-  ROOT=${DEVBOX_PROJECT_ROOT:-}
-  [[ -n $ROOT ]] || die "DEVBOX_PROJECT_ROOT is unset; run via 'devbox run pick'"
   command -v jq >/dev/null || die "jq is required"
-  load_scripts
+  if $npm_mode; then
+    # `devbox run` executes from the project root and exports the directory
+    # the user typed the command in as DEVBOX_WD; without it, assume the
+    # caller is already there.
+    RUN_DIR=${DEVBOX_WD:-$PWD}
+    RUNNER=(npm run)
+    MANIFEST=$RUN_DIR/package.json
+    load_npm_scripts
+  else
+    # devbox resolves the project from any subdirectory and exports its root
+    # to every `devbox run` and `devbox shell`.
+    ROOT=${DEVBOX_PROJECT_ROOT:-}
+    [[ -n $ROOT ]] || die "DEVBOX_PROJECT_ROOT is unset; run via 'devbox run pick'"
+    RUN_DIR=$ROOT
+    RUNNER=(devbox run)
+    MANIFEST=$ROOT/devbox.json
+    load_devbox_scripts
+  fi
 
   case $mode in
     preview)
@@ -149,12 +173,15 @@ main() {
   esac
 
   listing=$(candidates)
-  [[ -n $listing ]] || die "no runnable scripts in $ROOT/devbox.json"
+  [[ -n $listing ]] || die "no runnable scripts in $MANIFEST"
   command -v fzf >/dev/null || die "fzf is required for the picker"
 
+  # fzf runs the preview as a fresh process, so it must be told the mode.
+  preview_cmd="bash $(printf '%q' "$SELF")"
+  ! $npm_mode || preview_cmd+=" --npm"
   choice=$(
-    fzf --prompt="devbox run " --height=40% --reverse --no-multi \
-      --preview="bash $(printf '%q' "$SELF") --preview {}" \
+    fzf --prompt="${RUNNER[*]} " --height=40% --reverse --no-multi \
+      --preview="$preview_cmd --preview {}" \
       --preview-window='down,4,wrap' <<<"$listing"
   ) || return 0
   [[ -n $choice ]] || return 0
@@ -170,7 +197,7 @@ main() {
     return 0
   fi
 
-  cd "$ROOT"
+  cd "$RUN_DIR"
   exec "${RUN_ARGV[@]}"
 }
 
