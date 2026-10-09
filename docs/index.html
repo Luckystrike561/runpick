@@ -63,7 +63,8 @@
   <section class="wrap" id="demo">
     <div class="terminal-tabs" role="tablist">
       <button class="terminal-tab is-active" type="button" role="tab" data-view="live">live demo</button>
-      <button class="terminal-tab" type="button" role="tab" data-view="recording">recording</button>
+      <button class="terminal-tab" type="button" role="tab" data-view="devbox">recording · devbox</button>
+      <button class="terminal-tab" type="button" role="tab" data-view="npm">recording · npm</button>
     </div>
     <div class="window">
       <div class="window-bar">
@@ -71,11 +72,12 @@
         <span class="window-title">~/myapp: bash</span>
       </div>
       <div class="terminal" id="terminal" tabindex="0" aria-label="Interactive runpick demo. Focus and type to filter, arrow keys to move, Enter to run, Escape to cancel."></div>
-      <img class="recording" id="recording" hidden loading="lazy" src="https://raw.githubusercontent.com/Luckystrike561/runpick/main/demo/demo.gif" alt="Recording of runpick filtering devbox scripts and running one">
+      <img class="recording" data-view="devbox" hidden loading="lazy" src="https://raw.githubusercontent.com/Luckystrike561/runpick/main/demo/demo.gif" alt="Recording of runpick filtering devbox scripts and running one">
+      <img class="recording" data-view="npm" hidden loading="lazy" src="https://raw.githubusercontent.com/Luckystrike561/runpick/main/demo/npm.gif" alt="Recording of runpick --npm listing package.json scripts and running npm run build">
     </div>
     <p class="demo-hint">
       Click to take over: type to filter · <kbd>↑</kbd> <kbd>↓</kbd> move · <kbd>Enter</kbd> run · <kbd>Esc</kbd> cancel
-      <br>Runs in your browser against the <a href="#example">example devbox.json</a>.
+      <br>Runs in your browser against the <a href="#example">example devbox.json</a> and its <a href="#npm">package.json scripts</a>. Try <code>devbox run pick:npm</code>.
     </p>
   </section>
 
@@ -117,6 +119,24 @@
         <h3>› Stays out of the way</h3>
         <p>The picker never lists itself. A script of yours named <code>pick</code> always wins.</p>
         <div class="keys"><kbd>--list</kbd><kbd>--print</kbd></div>
+      </article>
+      <article class="card">
+        <span class="card-index">[07]</span>
+        <h3>› npm scripts too</h3>
+        <p>With <code>--npm</code>, list the <code>scripts</code> of your <code>package.json</code> and run the pick as <code>npm run &lt;name&gt;</code>, from the directory you invoked devbox.</p>
+        <div class="keys"><kbd>--npm</kbd><kbd>npm run build</kbd></div>
+      </article>
+      <article class="card">
+        <span class="card-index">[08]</span>
+        <h3>› Same sharp edges</h3>
+        <p><code>--list</code>, <code>--print</code>, <code>--preview</code> and <code>--args</code> work unchanged on npm scripts. Preview shows the real command, not the script name.</p>
+        <div class="keys"><kbd>--preview</kbd><kbd>--args</kbd></div>
+      </article>
+      <article class="card">
+        <span class="card-index">[09]</span>
+        <h3>› Node stays yours</h3>
+        <p>The plugin never ships Node. Whatever your own <code>devbox.json</code> provides is what runs, whatever the lockfile.</p>
+        <div class="keys"><kbd>npm</kbd><kbd>pnpm</kbd></div>
       </article>
     </div>
   </section>
@@ -173,6 +193,23 @@
   }
 <span class="tok-punct">}</span></code></pre>
     </div>
+
+    <h3 class="subhead" id="npm">The npm scripts it can pick</h3>
+    <p>Add <code>--npm</code> to pick from a <code>package.json</code> instead. runpick lists its <code>scripts</code> and runs the pick as <code>npm run &lt;name&gt;</code>, so the preview under the list shows the command npm will run:</p>
+    <div class="snippet">
+      <button class="copy" type="button">copy</button>
+<pre><code><span class="tok-punct">{</span>
+  <span class="tok-key">"name"</span>: <span class="tok-str">"acme-web"</span>,
+  <span class="tok-key">"scripts"</span>: {
+    <span class="tok-key">"build"</span>: <span class="tok-str">"vite build"</span>,
+    <span class="tok-key">"test"</span>: <span class="tok-str">"vitest run"</span>,
+    <span class="tok-key">"lint"</span>: <span class="tok-str">"eslint ."</span>,
+    <span class="tok-key">"dev:web"</span>: <span class="tok-str">"vite"</span>,
+    <span class="tok-key">"release"</span>: <span class="tok-str">"changeset publish"</span>
+  }
+<span class="tok-punct">}</span></code></pre>
+    </div>
+    <p class="after">then: <code>devbox run pick:npm</code> — or, from anywhere in the project, <code>bash "$RUNPICK_BIN" --npm</code>.</p>
   </section>
 
   <section class="wrap" id="options">
@@ -185,6 +222,7 @@
         <tr><td><code>devbox run pick --args</code></td><td>pick, then type arguments for the script</td></tr>
         <tr><td><code>bash "$RUNPICK_BIN" --print</code></td><td>pick, then print <code>devbox run &lt;name&gt;</code> instead of running it</td></tr>
         <tr><td><code>bash "$RUNPICK_BIN" --list</code></td><td>list script names, one per line</td></tr>
+        <tr><td><code>bash "$RUNPICK_BIN" --npm</code></td><td>pick from the <code>package.json</code> scripts and run them with <code>npm run</code></td></tr>
         <tr><td><code>bash "$RUNPICK_BIN" --version</code></td><td>print the version</td></tr>
       </tbody>
     </table>
@@ -213,6 +251,10 @@
     <details>
       <summary>Do I need fzf or jq installed?</summary>
       <p>No. The plugin declares both as devbox packages, so devbox provides them inside the project environment.</p>
+    </details>
+    <details>
+      <summary>Does it pick npm scripts?</summary>
+      <p>Yes, with <code>--npm</code>. It reads the <code>package.json</code> in the directory you ran <code>devbox run</code> from and runs the pick as <code>npm run &lt;name&gt;</code>. Your own devbox config has to provide <code>npm</code>: the plugin does not ship Node.</p>
     </details>
   </section>
 </main>

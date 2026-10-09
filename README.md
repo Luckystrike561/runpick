@@ -115,6 +115,8 @@ $ devbox run pick:npm --print
 npm run build:prod
 ```
 
+![runpick picking npm scripts](demo/npm.gif)
+
 `devbox run` executes scripts from the project root and exports the directory
 you typed the command in as `DEVBOX_WD`; runpick reads `package.json` there,
 falling back to the current directory when `DEVBOX_WD` is unset. A printed
@@ -136,6 +138,7 @@ is read: no parent directories, no workspaces.
 ```bash
 devbox run test   # smoke tests
 devbox run demo   # re-record demo/demo.gif with vhs
+devbox run demo:npm   # re-record demo/npm.gif with vhs
 ```
 
 ## Licence
