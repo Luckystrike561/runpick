@@ -119,8 +119,16 @@ npm run build:prod
 
 `devbox run` executes scripts from the project root and exports the directory
 you typed the command in as `DEVBOX_WD`; runpick reads `package.json` there,
-falling back to the current directory when `DEVBOX_WD` is unset. A printed
-`npm run` command targets that directory's `package.json`, so paste it there.
+falling back to the current directory when `DEVBOX_WD` is unset. Called
+anywhere but the project root, runpick reads the current directory instead.
+A printed `npm run` command targets that directory's `package.json`, so paste
+it there.
+
+Inside an active `devbox shell` or direnv environment, `DEVBOX_WD` stays where
+the environment was entered and does not follow `cd`, so a nested
+`devbox run pick:npm` reads that directory. Run `bash "$RUNPICK_BIN" --npm`
+there instead, which reads the directory you are in.
+
 Node is not part of the plugin: the project's own devbox config provides `npm`.
 Only `npm run` is used, whatever the lockfile, and only the one `package.json`
 is read: no parent directories, no workspaces.

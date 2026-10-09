@@ -201,6 +201,9 @@ check "npm: lists the invocation directory's scripts in file order, hiding the p
 check "npm: falls back to the working directory without DEVBOX_WD" \
   "$npm_listing" "$(cd web && env -u DEVBOX_WD "$runpick" --npm --list)"
 
+check "npm: away from the project root, the working directory beats a stale DEVBOX_WD" \
+  "$npm_listing" "$(cd web && DEVBOX_WD=$work/proj "$runpick" --npm --list)"
+
 check "npm: preview shows the script's command" \
   "vite build --mode production" \
   "$(DEVBOX_WD=$work/proj/web "$runpick" --npm --preview build:prod)"

@@ -145,10 +145,15 @@ main() {
 
   command -v jq >/dev/null || die "jq is required"
   if $npm_mode; then
-    # `devbox run` executes from the project root and exports the directory
-    # the user typed the command in as DEVBOX_WD; without it, assume the
-    # caller is already there.
-    RUN_DIR=${DEVBOX_WD:-$PWD}
+    # `devbox run` starts scripts from the project root and exports the
+    # directory the command was typed in as DEVBOX_WD. `devbox shell` and
+    # direnv set DEVBOX_WD once, where the env was entered, and it does not
+    # follow `cd`, so away from the root the working directory is the truth.
+    if [[ $PWD -ef ${DEVBOX_PROJECT_ROOT:-$PWD} ]]; then
+      RUN_DIR=${DEVBOX_WD:-$PWD}
+    else
+      RUN_DIR=$PWD
+    fi
     RUNNER=(npm run)
     MANIFEST=$RUN_DIR/package.json
     load_npm_scripts
