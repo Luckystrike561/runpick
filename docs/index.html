@@ -27,6 +27,7 @@
       <a href="#features">features</a>
       <a href="#install">install</a>
       <a href="#options">options</a>
+      <a href="#args">args</a>
       <a href="#faq">faq</a>
       <a class="nav-github" href="https://github.com/Luckystrike561/runpick">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
@@ -205,11 +206,23 @@
     <span class="tok-key">"test"</span>: <span class="tok-str">"vitest run"</span>,
     <span class="tok-key">"lint"</span>: <span class="tok-str">"eslint ."</span>,
     <span class="tok-key">"dev:web"</span>: <span class="tok-str">"vite"</span>,
+    <span class="tok-key">"dev:api"</span>: <span class="tok-str">"node server.js"</span>,
     <span class="tok-key">"release"</span>: <span class="tok-str">"changeset publish"</span>
   }
 <span class="tok-punct">}</span></code></pre>
     </div>
-    <p class="after">then: <code>devbox run pick:npm</code> — or, from anywhere in the project, <code>bash "$RUNPICK_BIN" --npm</code>.</p>
+    <p>Add it as a script of its own, forwarding arguments so <code>--list</code>, <code>--print</code>, <code>--preview</code> and <code>--args</code> keep working:</p>
+    <div class="snippet">
+      <button class="copy" type="button">copy</button>
+<pre><code>"pick:npm": ["bash \"$RUNPICK_BIN\" --npm \"$@\""]</code></pre>
+    </div>
+<pre><code>$ cd web
+$ devbox run pick:npm --print
+  (pick build:prod)
+npm run build:prod</code></pre>
+    <p><code>devbox run</code> executes scripts from the project root and exports the directory you typed the command in as <code>DEVBOX_WD</code>. runpick reads <code>package.json</code> there, falling back to the current directory when <code>DEVBOX_WD</code> is unset. Called anywhere but the project root, runpick reads the current directory instead. A printed <code>npm run</code> command targets that directory's <code>package.json</code>, so paste it there.</p>
+    <p>Inside an active <code>devbox shell</code> or direnv environment, <code>DEVBOX_WD</code> stays where the environment was entered and does not follow <code>cd</code>, so a nested <code>devbox run pick:npm</code> reads that directory. Run <code>bash "$RUNPICK_BIN" --npm</code> there instead, which reads the directory you are in.</p>
+    <p>Node is not part of the plugin: the project's own devbox config provides <code>npm</code>. Only <code>npm run</code> is used, whatever the lockfile, and only the one <code>package.json</code> is read: no parent directories, no workspaces.</p>
   </section>
 
   <section class="wrap" id="options">
@@ -219,7 +232,7 @@
       <thead><tr><th>command</th><th>does</th></tr></thead>
       <tbody>
         <tr><td><code>devbox run pick</code></td><td>pick a script, then run it</td></tr>
-        <tr><td><code>devbox run pick --args</code></td><td>pick, then type arguments for the script</td></tr>
+        <tr><td><code>devbox run pick --args</code></td><td>pick, then type arguments for the script (<a href="#args">details</a>)</td></tr>
         <tr><td><code>bash "$RUNPICK_BIN" --print</code></td><td>pick, then print <code>devbox run &lt;name&gt;</code> instead of running it</td></tr>
         <tr><td><code>bash "$RUNPICK_BIN" --list</code></td><td>list script names, one per line</td></tr>
         <tr><td><code>bash "$RUNPICK_BIN" --npm</code></td><td>pick from the <code>package.json</code> scripts and run them with <code>npm run</code></td></tr>
@@ -232,6 +245,22 @@
       <button class="copy" type="button">copy</button>
 <pre><code>"runpick": ["bash \"$RUNPICK_BIN\" \"$@\""]</code></pre>
     </div>
+  </section>
+
+  <section class="wrap" id="args">
+    <h2><span class="hash">##</span> arguments <span class="comment">// --args asks what to pass the picked script</span></h2>
+    <p>Add <code>--args</code> and, once you have picked a script, runpick asks for the arguments to run it with. The prompt shows the command so far, with readline editing. <kbd>Enter</kbd> on an empty line runs with no arguments, and <kbd>Ctrl-D</kbd> or <kbd>Ctrl-C</kbd> cancels without running anything. Without <code>--args</code> nothing is asked.</p>
+    <p>Say the project wraps a CLI it builds, and the wrapper hands its arguments on:</p>
+    <div class="snippet">
+      <button class="copy" type="button">copy</button>
+<pre><code>"cli": ["cargo run \"$@\""]</code></pre>
+    </div>
+    <p>Pick <code>cli</code>, then type what the binary should get, including the <code>--</code> that keeps cargo from reading <code>--list</code> itself:</p>
+<pre><code>$ devbox run pick --args
+  (pick cli)
+devbox run cli -- --list --format 'long names'</code></pre>
+    <p>That runs <code>cargo run -- --list --format 'long names'</code>, so the binary sees <code>--list --format long names</code> (three words). The line is split by <code>xargs</code>: quotes and backslashes group words, but inside double quotes a backslash is kept as typed (<code>"C:\\dir"</code> stays <code>C:\\dir</code>, <code>"a \"b\""</code> is rejected), and nothing is expanded: a typed <code>$HOME</code>, <code>$(...)</code> or <code>*</code> reaches the script as written.</p>
+    <p>devbox swallows one <code>--</code> after the script name, so runpick adds its own and any <code>--</code> you type is passed on intact. devbox hands the arguments to a script as <code>$@</code>, so a script only sees them if its command uses them, as <code>cli</code> does above. With <code>--print</code>, the printed command carries the arguments, shell-quoted so it can be pasted back.</p>
   </section>
 
   <section class="wrap" id="faq">

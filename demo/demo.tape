@@ -11,7 +11,7 @@ Set TypingSpeed 60ms
 Set Theme "Catppuccin Mocha"
 
 Hide
-Type "export PS1='$ ' && rm -rf /tmp/myapp && cp -r demo /tmp/myapp && cd /tmp/myapp && devbox run -q true && clear"
+Type `export PS1='$ ' && repo=$PWD && rm -rf /tmp/myapp && cp -r demo /tmp/myapp && cd /tmp/myapp && jq --arg plugin "path:$repo/plugin.json" '.include = [$plugin]' devbox.json > devbox.local.json && mv devbox.local.json devbox.json && devbox run -q true && clear`
 Enter
 Sleep 3s
 Show
