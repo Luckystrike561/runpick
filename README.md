@@ -105,7 +105,7 @@ from that directory, inside the devbox environment. `--list`, `--print`,
 script of its own:
 
 ```json
-"pick:npm": "bash \"$RUNPICK_BIN\" --npm"
+"pick:npm": ["bash \"$RUNPICK_BIN\" --npm \"$@\""]
 ```
 
 ```
