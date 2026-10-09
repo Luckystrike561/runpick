@@ -14,7 +14,7 @@ A complete `devbox.json`. The `include` line is the only thing runpick needs:
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/main/.schema/devbox.schema.json",
-  "include": ["github:Luckystrike561/runpick/tags/1.1.0"],
+  "include": ["github:Luckystrike561/runpick/tags/1.2.0"],
   "shell": {
     "scripts": {
       "build": "echo 'compiling...' && sleep 1 && echo 'built dist/app'",
@@ -45,6 +45,7 @@ Inside `devbox shell`, the plugin exports `$RUNPICK_BIN`:
 bash "$RUNPICK_BIN" --args    # pick, then type arguments for the script
 bash "$RUNPICK_BIN" --print   # pick, then print the command instead of running it
 bash "$RUNPICK_BIN" --list    # list script names, one per line
+bash "$RUNPICK_BIN" --npm     # pick from package.json scripts instead
 ```
 
 If your project already has a script named `pick`, yours wins. Give the
@@ -95,6 +96,43 @@ devbox swallows one `--` after the script name, so runpick adds its own and any
 With `--print`, the printed command carries the arguments, shell-quoted so it
 can be pasted back.
 
+### Picking npm scripts
+
+With `--npm`, runpick lists the `scripts` of the `package.json` in the
+directory you ran `devbox run` from, and runs the pick as `npm run <name>`
+from that directory, inside the devbox environment. `--list`, `--print`,
+`--preview` and `--args` work the same way on the npm scripts. Add it as a
+script of its own:
+
+```json
+"pick:npm": ["bash \"$RUNPICK_BIN\" --npm \"$@\""]
+```
+
+```
+$ cd web
+$ devbox run pick:npm --print
+  (pick build:prod)
+npm run build:prod
+```
+
+![runpick picking npm scripts](demo/npm.gif)
+
+`devbox run` executes scripts from the project root and exports the directory
+you typed the command in as `DEVBOX_WD`; runpick reads `package.json` there,
+falling back to the current directory when `DEVBOX_WD` is unset. Called
+anywhere but the project root, runpick reads the current directory instead.
+A printed `npm run` command targets that directory's `package.json`, so paste
+it there.
+
+Inside an active `devbox shell` or direnv environment, `DEVBOX_WD` stays where
+the environment was entered and does not follow `cd`, so a nested
+`devbox run pick:npm` reads that directory. Run `bash "$RUNPICK_BIN" --npm`
+there instead, which reads the directory you are in.
+
+Node is not part of the plugin: the project's own devbox config provides `npm`.
+Only `npm run` is used, whatever the lockfile, and only the one `package.json`
+is read: no parent directories, no workspaces.
+
 ## Limitations
 
 - Only scripts in the project's own `devbox.json` are listed, not scripts
@@ -108,6 +146,7 @@ can be pasted back.
 ```bash
 devbox run test   # smoke tests
 devbox run demo   # re-record demo/demo.gif with vhs
+devbox run demo:npm   # re-record demo/npm.gif with vhs
 ```
 
 ## Licence

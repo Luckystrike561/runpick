@@ -1,0 +1,12 @@
+{
+  "name": "myapp-web",
+  "private": true,
+  "scripts": {
+    "build": "echo 'vite v5.4.2 building for production...' && sleep 1 && echo 'built dist in 812ms'",
+    "test": "echo 'RUN  v1.6.0' && sleep 1 && echo 'Test Files  3 passed (3)' && echo 'Tests  42 passed (42)'",
+    "lint": "echo 'eslint: no problems found'",
+    "dev:web": "echo 'VITE ready in 231ms' && echo 'Local: http://localhost:5173/'",
+    "dev:api": "echo 'api listening on http://localhost:3000'",
+    "release": "echo 'published myapp@1.2.0'"
+  }
+}

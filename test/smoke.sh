@@ -168,5 +168,106 @@ check "package.json alone is not a devbox project" "1" \
 check "running outside devbox is rejected" "1" \
   "$(env -u DEVBOX_PROJECT_ROOT "$runpick" --list >/dev/null 2>&1; echo $?)"
 
+# --- npm mode: package.json in the invocation directory ----------------------
+
+mkdir -p "$work/proj/web" "$work/proj/noscripts" "$work/proj/emptyscripts"
+echo '{ "scripts": { "root-only": "echo root" } }' >"$work/proj/package.json"
+cat >"$work/proj/web/package.json" <<'EOF'
+{
+  "name": "web",
+  "scripts": {
+    "dev": "vite",
+    "build:prod": "vite build --mode production",
+    "deploy prod": "echo deploying",
+    "pick": "bash \"$RUNPICK_BIN\" --npm"
+  }
+}
+EOF
+echo '{ "name": "noscripts" }' >"$work/proj/noscripts/package.json"
+echo '{ "scripts": {} }' >"$work/proj/emptyscripts/package.json"
+
+npm_listing="dev
+build:prod
+deploy prod"
+
+# devbox runs every script from the project root, so the invocation directory
+# only survives in DEVBOX_WD.
+cd "$work/proj"
+export DEVBOX_PROJECT_ROOT=$work/proj
+
+check "npm: lists the invocation directory's scripts in file order, hiding the picker" \
+  "$npm_listing" "$(DEVBOX_WD=$work/proj/web "$runpick" --npm --list)"
+
+check "npm: falls back to the working directory without DEVBOX_WD" \
+  "$npm_listing" "$(cd web && env -u DEVBOX_WD "$runpick" --npm --list)"
+
+check "npm: away from the project root, the working directory beats a stale DEVBOX_WD" \
+  "$npm_listing" "$(cd web && DEVBOX_WD=$work/proj "$runpick" --npm --list)"
+
+check "npm: preview shows the script's command" \
+  "vite build --mode production" \
+  "$(DEVBOX_WD=$work/proj/web "$runpick" --npm --preview build:prod)"
+
+check "npm: does not need DEVBOX_PROJECT_ROOT" \
+  "$npm_listing" "$(DEVBOX_WD=$work/proj/web env -u DEVBOX_PROJECT_ROOT "$runpick" --npm --list)"
+
+check "npm: no package.json names the directory" \
+  "1:runpick: no package.json in $work/empty" \
+  "$(out=$(DEVBOX_WD=$work/empty "$runpick" --npm --list 2>&1); echo "$?:$out")"
+
+check "npm: package.json without scripts is rejected" \
+  "1:runpick: no scripts in $work/proj/noscripts/package.json" \
+  "$(out=$(DEVBOX_WD=$work/proj/noscripts "$runpick" --npm --list 2>&1); echo "$?:$out")"
+
+check "npm: package.json with empty scripts is rejected" "1" \
+  "$(DEVBOX_WD=$work/proj/emptyscripts "$runpick" --npm --list >/dev/null 2>&1; echo $?)"
+
+cat >"$stubs/npm" <<'EOF'
+#!/usr/bin/env bash
+printf 'cwd=%s npm' "$PWD"
+printf ' [%s]' "$@"
+echo
+EOF
+chmod +x "$stubs/npm"
+export DEVBOX_WD=$work/proj/web
+
+check "npm: runs npm run <key> from the invocation directory" \
+  "cwd=$work/proj/web npm [run] [build:prod]" \
+  "$(stub_pick build:prod --npm </dev/null)"
+
+check "npm --print: shell-quotes a key with a space" \
+  'npm run deploy\ prod' "$(stub_pick 'deploy prod' --npm --print </dev/null)"
+
+check "npm --print: a key with : survives pasting back" \
+  "cwd=$work/proj/web npm [run] [build:prod]" \
+  "$(cd "$DEVBOX_WD" && PATH=$stubs:$PATH eval "$(stub_pick build:prod --npm --print </dev/null)")"
+
+check "npm --args: typed words follow npm's own --" \
+  "cwd=$work/proj/web npm [run] [dev] [--] [--port] [two words]" \
+  "$(echo "--port 'two words'" | stub_pick dev --npm --args)"
+
+if command -v fzf >/dev/null; then
+  cp "$stubs/npm" "$work/bin/npm"
+  check "npm: the real picker lists package.json and runs npm" \
+    "cwd=$work/proj/web npm [run] [build:prod]" "$(pick build:prod --npm)"
+fi
+
+# fzf runs --preview as a fresh process, so the mode has to travel in its argv.
+mkdir -p "$work/previewer"
+cat >"$work/previewer/fzf" <<'EOF'
+#!/usr/bin/env bash
+cat >/dev/null
+for arg; do
+  [[ $arg == --preview=* ]] || continue
+  cmd=${arg#--preview=}
+  eval "${cmd//\{\}/$PICK}" >&2
+done
+EOF
+chmod +x "$work/previewer/fzf"
+check "npm: the picker's preview reads package.json" \
+  "vite build --mode production" \
+  "$(PICK=build:prod PATH=$work/previewer:$PATH "$runpick" --npm 2>&1 </dev/null)"
+unset DEVBOX_WD
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [[ $fail -eq 0 ]]

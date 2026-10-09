@@ -1,6 +1,6 @@
 "use strict";
 
-const SCRIPTS = [
+const DEVBOX_SCRIPTS = [
   { name: "build", steps: ["echo 'compiling...' && sleep 1 && echo 'built dist/app'"] },
   { name: "test", steps: ["echo 'running 42 tests'", "sleep 1", "echo 'all green'"] },
   { name: "lint", steps: ["echo 'no issues found'"] },
@@ -9,7 +9,22 @@ const SCRIPTS = [
   { name: "release", steps: ["echo 'tagging v1.2.0'", "echo 'pushed'"] },
 ];
 
-const PICK_COMMAND = "devbox run pick";
+const NPM_SCRIPTS = [
+  { name: "build", preview: "vite build", steps: ["echo 'vite v5.4.2 building for production...'" , "sleep 1", "echo 'built dist in 812ms'"] },
+  { name: "test", preview: "vitest run", steps: ["echo 'RUN  v1.6.0'" , "sleep 1", "echo 'Test Files  3 passed (3)'", "echo 'Tests  42 passed (42)'"] },
+  { name: "lint", preview: "eslint .", steps: ["echo 'no lint errors'"] },
+  { name: "dev:web", preview: "vite", steps: ["echo 'VITE ready in 231ms'", "echo 'Local: http://localhost:5173/'" ] },
+  { name: "dev:api", preview: "node server.js", steps: ["echo 'api listening on :3000'"] },
+  { name: "release", preview: "changeset publish", steps: ["echo 'Publishing runpick@1.2.0...'", "sleep 1", "echo 'Published'" ] },
+];
+
+const PICK_DEVBOX = "devbox run pick";
+const PICK_NPM = "devbox run pick:npm";
+const RUNNERS = {
+  devbox: { command: PICK_DEVBOX, prompt: "devbox run ", scripts: DEVBOX_SCRIPTS, npm: false },
+  npm: { command: PICK_NPM, prompt: "npm run ", scripts: NPM_SCRIPTS, npm: true },
+};
+
 const PREVIEW_HEIGHT_LINES = 4;
 const MAX_PREVIEW_WIDTH_CHARS = 56;
 const PREVIEW_FRAME_CHARS = 4;
@@ -23,12 +38,17 @@ const terminal = document.getElementById("terminal");
 const state = {
   history: [],
   mode: "shell",
+  runner: "devbox",
   shellInput: "",
   query: "",
   cursorIndex: 0,
   isUserDriven: false,
   generation: 0,
 };
+
+function runner() {
+  return RUNNERS[state.runner];
+}
 
 function escapeHtml(text) {
   return text.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -51,7 +71,8 @@ function fuzzyMatch(name, query) {
 }
 
 function filteredScripts() {
-  return SCRIPTS
+  const scripts = runner().scripts;
+  return scripts
     .map((script, order) => ({ script, order, match: fuzzyMatch(script.name, state.query) }))
     .filter((entry) => entry.match)
     .sort((a, b) => b.match.score - a.match.score || a.order - b.order);
@@ -68,6 +89,10 @@ function cursorHtml() {
   return `<span class="cursor${userClass}"> </span>`;
 }
 
+function previewText(script) {
+  return script.preview ?? script.steps.join("\n");
+}
+
 function wrapPreview(command, widthChars) {
   const lines = [];
   for (const raw of command.split("\n")) {
@@ -79,12 +104,13 @@ function wrapPreview(command, widthChars) {
 }
 
 function pickerLines(columns) {
+  const scripts = runner().scripts;
   const previewWidthChars = Math.min(MAX_PREVIEW_WIDTH_CHARS, columns - PREVIEW_FRAME_CHARS);
   const entries = filteredScripts();
   state.cursorIndex = Math.min(state.cursorIndex, Math.max(entries.length - 1, 0));
   const lines = [
-    `<span class="term-fzf-prompt">devbox run </span>${escapeHtml(state.query)}${cursorHtml()}`,
-    `<span class="term-info">  ${entries.length}/${SCRIPTS.length} ${"─".repeat(Math.min(40, columns - 8))}</span>`,
+    `<span class="term-fzf-prompt">${escapeHtml(runner().prompt)}</span>${escapeHtml(state.query)}${cursorHtml()}`,
+    `<span class="term-info">  ${entries.length}/${scripts.length} ${"─".repeat(Math.min(40, columns - 8))}</span>`,
   ];
   entries.forEach((entry, i) => {
     const isCurrent = i === state.cursorIndex;
@@ -93,7 +119,7 @@ function pickerLines(columns) {
     lines.push(`<span class="${classes}" data-index="${i}">${pointer}${highlight(entry.script.name, entry.match.positions)}</span>`);
   });
   const current = entries[state.cursorIndex];
-  const preview = current ? wrapPreview(current.script.steps.join("\n"), previewWidthChars) : [];
+  const preview = current ? wrapPreview(previewText(current.script), previewWidthChars) : [];
   const border = "─".repeat(previewWidthChars + 2);
   lines.push(`<span class="term-border">╭${border}╮</span>`);
   for (let i = 0; i < PREVIEW_HEIGHT_LINES; i++) {
@@ -142,8 +168,13 @@ function parseEcho(command) {
   return match ? match[1] : null;
 }
 
-async function runScript(script, generation) {
-  const commands = script.steps.flatMap((step) => step.split("&&").map((part) => part.trim()));
+async function runScript(entry, generation) {
+  if (runner().npm) {
+    pushHistory(`<span class="term-info">&gt; ${escapeHtml(entry.script.name)}</span>`);
+    pushHistory(`<span class="term-info">&gt; ${escapeHtml(entry.script.preview)}</span>`);
+    pushHistory("");
+  }
+  const commands = entry.script.steps.flatMap((step) => step.split("&&").map((part) => part.trim()));
   for (const command of commands) {
     const seconds = parseSleepSeconds(command);
     if (seconds !== null) {
@@ -156,8 +187,9 @@ async function runScript(script, generation) {
   }
 }
 
-function openPicker() {
-  pushHistory(shellPromptHtml(PICK_COMMAND));
+function openPicker(command, runnerName) {
+  pushHistory(shellPromptHtml(command));
+  state.runner = runnerName;
   state.shellInput = "";
   state.query = "";
   state.cursorIndex = 0;
@@ -167,7 +199,7 @@ function openPicker() {
 
 function returnToShell() {
   state.mode = "shell";
-  if (state.isUserDriven) state.shellInput = PICK_COMMAND;
+  if (state.isUserDriven) state.shellInput = runner().command;
   render();
 }
 
@@ -177,7 +209,7 @@ async function acceptSelection(generation) {
   state.mode = "running";
   render();
   try {
-    await runScript(entry.script, generation);
+    await runScript(entry, generation);
   } finally {
     if (generation === state.generation) returnToShell();
   }
@@ -202,9 +234,9 @@ async function typeInto(field, text, generation) {
 async function autoplay(generation) {
   const pause = (ms) => sleep(ms, generation);
   await pause(800);
-  await typeInto("shellInput", PICK_COMMAND, generation);
+  await typeInto("shellInput", PICK_DEVBOX, generation);
   await pause(400);
-  openPicker();
+  openPicker(PICK_DEVBOX, "devbox");
   await pause(1500);
   moveCursor(1);
   await pause(700);
@@ -217,16 +249,17 @@ async function autoplay(generation) {
   await typeInto("query", ":m", generation);
   await pause(1100);
   await acceptSelection(generation);
+  await pause(1800);
+  await typeInto("shellInput", PICK_NPM, generation);
+  await pause(400);
+  openPicker(PICK_NPM, "npm");
   await pause(1500);
-  await typeInto("shellInput", PICK_COMMAND, generation);
-  await pause(300);
-  openPicker();
-  await pause(1000);
-  await typeInto("query", "test", generation);
+  await typeInto("query", "build", generation);
   await pause(1100);
   await acceptSelection(generation);
   await pause(AUTOPLAY_RESTART_DELAY_MS);
   state.history = [];
+  state.runner = "devbox";
   render();
   autoplay(generation).catch(() => {});
 }
@@ -237,18 +270,19 @@ function takeOver() {
   state.generation += 1;
   state.history = [];
   state.mode = "shell";
-  state.shellInput = PICK_COMMAND;
+  state.shellInput = runner().command;
   render();
 }
 
 function handleShellKey(event) {
   if (event.key === "Enter") {
-    if (state.shellInput.trim() === PICK_COMMAND) {
-      openPicker();
+    const typed = state.shellInput.trim();
+    if (typed === PICK_DEVBOX || typed === PICK_NPM) {
+      openPicker(typed, typed === PICK_NPM ? "npm" : "devbox");
       return;
     }
     pushHistory(shellPromptHtml(state.shellInput));
-    if (state.shellInput.trim()) pushHistory(`try: ${escapeHtml(PICK_COMMAND)}`);
+    if (typed) pushHistory(`try: ${escapeHtml(PICK_DEVBOX)} or ${escapeHtml(PICK_NPM)}`);
     state.shellInput = "";
   } else if (event.key === "Backspace") {
     state.shellInput = state.shellInput.slice(0, -1);
@@ -303,10 +337,10 @@ terminal.addEventListener("click", (event) => {
 
 for (const tab of document.querySelectorAll(".terminal-tab")) {
   tab.addEventListener("click", () => {
-    const isRecording = tab.dataset.view === "recording";
+    const view = tab.dataset.view;
     for (const other of document.querySelectorAll(".terminal-tab")) other.classList.toggle("is-active", other === tab);
-    terminal.hidden = isRecording;
-    document.getElementById("recording").hidden = !isRecording;
+    terminal.hidden = view !== "live";
+    for (const image of document.querySelectorAll(".recording")) image.hidden = image.dataset.view !== view;
     render();
   });
 }

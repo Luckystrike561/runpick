@@ -4,7 +4,8 @@
   "shell": {
     "scripts": {
       "test": "bash test/smoke.sh",
-      "demo": "vhs demo/demo.tape"
+      "demo": "vhs demo/demo.tape",
+      "demo:npm": "vhs demo/npm.tape"
     }
   }
 }

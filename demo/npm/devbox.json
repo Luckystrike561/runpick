@@ -1,0 +1,10 @@
+{
+  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/main/.schema/devbox.schema.json",
+  "include": ["github:Luckystrike561/runpick/tags/1.2.0"],
+  "packages": ["nodejs@22"],
+  "shell": {
+    "scripts": {
+      "pick:npm": ["bash \"$RUNPICK_BIN\" --npm \"$@\""]
+    }
+  }
+}
